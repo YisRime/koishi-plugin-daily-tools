@@ -1,0 +1,22 @@
+{
+  "name": "koishi-plugin-daily-tools",
+  "description": "每天都会用到的小工具，内容丰富，高度可自定义",
+  "version": "0.0.1",
+  "main": "lib/index.js",
+  "typings": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "dist"
+  ],
+  "license": "MIT",
+  "scripts": {},
+  "keywords": [
+    "chatbot",
+    "koishi",
+    "plugin"
+  ],
+  "devDependencies": {},
+  "peerDependencies": {
+    "koishi": "^4.18.3"
+  }
+}
