@@ -99,211 +99,267 @@ export const Config: Schema<Config> = Schema.intersect([
 ])
 
 export async function apply(ctx: Context, config: Config) {
-  // 初始化多语言支持
-  ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
-  ctx.i18n.define('en-US', require('./locales/en-US'));
+    ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
+    ctx.i18n.define('en-US', require('./locales/en-US'));
 
   // 注册精致睡眠命令
   ctx.command('sleep')
     .alias('jzsm')
     .alias('精致睡眠')
     .action(async ({ session }) => {
-      if (!session.guildId) {
-        return session.text('commands.sleep.messages.guild_only')
-      }
-
-      let duration: number
-      const now = new Date()
-      const sleep = config.sleep
-
-      switch (sleep.type) {
-        case 'static':
-          duration = Math.max(1, sleep.duration)
-          break
-        case 'until':
-          const [hours, minutes] = sleep.until.split(':').map(Number)
-          const endTime = new Date(now)
-          endTime.setHours(hours, minutes, 0, 0)
-          if (endTime <= now) {
-            endTime.setDate(endTime.getDate() + 1)
-          }
-          duration = Math.max(1, Math.floor((endTime.getTime() - now.getTime()) / 60000))
-          break
-        case 'random':
-          const min = Math.max(1, sleep.min)
-          const max = Math.max(min, sleep.max)
-          duration = Math.floor(Math.random() * (max - min + 1) + min)
-          break
-        default:
-          return session.text('commands.sleep.messages.invalid_mode')
-      }
-
       try {
-        await session.bot.muteGuildMember(session.guildId, session.userId, duration * 60 * 1000)
-        return session.text('commands.sleep.messages.success', [duration])
+        if (!session?.guildId) {
+          const message = await session.send(session.text('commands.sleep.messages.guild_only'))
+            .catch(() => null);
+
+          if (message) {
+            setTimeout(async () => {
+              try {
+                const messageId = Array.isArray(message) ? message[0] : message;
+                await session.bot.deleteMessage(session.channelId, messageId);
+              } catch (error) {
+                console.error('Message recall failed:', error);
+              }
+            }, 5000);
+          }
+          return;
+        }
+
+        let duration: number;
+        const now = new Date();
+        const sleep = config.sleep;
+
+        switch (sleep.type) {
+          case 'static':
+            duration = Math.max(1, sleep.duration);
+            break;
+          case 'until':
+            const [hours, minutes] = sleep.until.split(':').map(Number);
+            if (isNaN(hours) || isNaN(minutes)) {
+              throw new Error(session.text('errors.invalid_time'));
+            }
+            const endTime = new Date(now);
+            endTime.setHours(hours, minutes, 0, 0);
+            if (endTime <= now) endTime.setDate(endTime.getDate() + 1);
+            duration = Math.max(1, Math.floor((endTime.getTime() - now.getTime()) / 60000));
+            break;
+          case 'random':
+            const min = Math.max(1, sleep.min);
+            const max = Math.max(min, sleep.max);
+            duration = Math.floor(Math.random() * (max - min + 1) + min);
+            break;
+        }
+
+        await session.bot.muteGuildMember(session.guildId, session.userId, duration * 60 * 1000);
+        return session.text('commands.sleep.messages.success');
       } catch (error) {
-        ctx.logger('sleep').warn(error)
-        return session.text('commands.sleep.messages.failed')
+        return session.text('commands.sleep.messages.failed');
       }
-    })
+    });
 
   // 注册手动点赞命令
   ctx.command('zanwo')
     .alias('赞我')
     .action(async ({ session }) => {
-      let successfulLikes = 0
-      try {
-        for (let i = 0; i < 5; i++) {
-          await session.bot.internal.sendLike(session.userId, 10)
-          successfulLikes += 1
-        }
-        return session.text('commands.zanwo.messages.success')
-      } catch (_e) {
-        if (successfulLikes > 0) return session.text('commands.zanwo.messages.success')
-        return session.text('commands.zanwo.messages.failure')
+      if (!session?.userId) {
+        return session.text('errors.invalid_session');
       }
-    })
+
+      let successfulLikes = 0;
+      const maxRetries = 3;
+
+      for (let retry = 0; retry < maxRetries; retry++) {
+        try {
+          for (let i = 0; i < 5; i++) {
+            await session.bot.internal.sendLike(session.userId, 10);
+            successfulLikes += 1;
+          }
+          return session.text('commands.zanwo.messages.success', [config.notifyAccount]);
+        } catch (error) {
+          if (retry === maxRetries - 1) {
+            return successfulLikes > 0
+              ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
+              : session.text('errors.like_failed');
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    });
 
   // 注册自动点赞功能
   if (config.autoLikeList?.length > 0 && config.autoLikeTime) {
-    const [hour, minute] = config.autoLikeTime.split(':').map(Number)
+    try {
+      const [hour, minute] = config.autoLikeTime.split(':').map(Number);
+      if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        throw new Error('无效的时间格式');
+      }
 
-    // 注册定时任务
-    ctx.cron(`0 ${minute} ${hour} * * *`, async () => {
-      const results = []
+      ctx.cron(`0 ${minute} ${hour} * * *`, async () => {
+        const results = [];
 
-      for (const userId of config.autoLikeList) {
-        try {
-          // 每个用户尝试点赞5轮
-          for (let i = 0; i < 5; i++) {
-            await ctx.bots.first?.internal.sendLike(userId, 10)
+        for (const userId of config.autoLikeList) {
+          let retryCount = 0;
+          const maxRetries = 3;
+
+          while (retryCount < maxRetries) {
+            try {
+              for (let i = 0; i < 5; i++) {
+                await ctx.bots.first?.internal.sendLike(userId, 10);
+              }
+              results.push(`用户 ${userId} 点赞成功`);
+              break;
+            } catch (error) {
+              retryCount++;
+              if (retryCount === maxRetries) {
+                results.push(`用户 ${userId} 点赞失败: ${error.message}`);
+              }
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
           }
-          results.push(`用户 ${userId} 点赞成功`)
-        } catch (error) {
-          results.push(`用户 ${userId} 点赞失败: ${error.message}`)
         }
-      }
 
-      // 如果配置了通知账户，发送点赞结果
-      if (config.notifyAccount) {
-        const resultMessage = results.join('\n')
-        await ctx.bots.first?.sendPrivateMessage(config.notifyAccount, resultMessage)
-      }
-    })
+        if (config.notifyAccount) {
+          try {
+            const resultMessage = results.join('\n');
+            await ctx.bots.first?.sendPrivateMessage(config.notifyAccount, resultMessage);
+          } catch (error) {
+            console.error('发送通知消息失败:', error);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('自动点赞任务注册失败:', error);
+    }
   }
 
   // 注册今日人品命令
   ctx.command('jrrp')
-    .option('d', '', { type: 'string' })
+    .option('d', '-d <date>', { type: 'string' })
     .action(async ({ session, options }) => {
-      // 处理 -d 选项，支持 "YYYY-MM-DD" 或 "MM-DD" 格式
-      let targetDate = new Date();
-      if (options?.d) {
-        const dateStr = String(options.d);
-        const fullDateMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-        if (fullDateMatch) {
-          targetDate = new Date(dateStr);
-        } else {
-          const parts = dateStr.split('-');
-          if (parts.length === 2) {
-            const month = Number(parts[0]);
-            const day = Number(parts[1]);
-            if (!isNaN(month) && !isNaN(day)) {
-              const currentYear = targetDate.getFullYear();
-              targetDate = new Date(currentYear, month - 1, day);
+      try {
+        if (!session?.userId) {
+          throw new Error(session.text('errors.invalid_session'));
+        }
+
+        let targetDate = new Date();
+        if (options?.d) {
+          const date = parseDate(options.d, targetDate);
+          if (!date) throw new Error(session.text('errors.invalid_date'));
+          targetDate = date;
+        }
+
+        // 使用 "YYYY-MM-DD" 格式
+        const year = targetDate.getFullYear();
+        const monthStr = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const dayStr = String(targetDate.getDate()).padStart(2, '0');
+        const currentDateStr = `${year}-${monthStr}-${dayStr}`;
+        const monthDay = `${monthStr}-${dayStr}`;
+
+        //特殊日期处理流程
+        if (config.holidayMessages?.[monthDay]) {
+          await session.send(session.text(config.holidayMessages[monthDay] + 'commands.jrrp.messages.prompt'));
+          const response = await session.prompt(10000);
+          if (!response) {
+            return session.text('commands.jrrp.messages.cancel');
+          }
+        }
+
+        // 获取用户昵称
+        const userNickname = session.username || 'User'
+
+        // 将字符串转换为32位无符号整数
+        function hashCode(str: string): number {
+          let hash = 5381
+          for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) + hash) + str.charCodeAt(i)
+            hash = hash >>> 0 // 保持为32位无符号整数
+          }
+          return hash
+        }
+
+        let luckScore: number
+        const userDateSeed = `${session.userId}-${currentDateStr}`
+
+        // 根据选择的算法计算今日人品值
+        switch (config.choice || 'basic') {
+          case 'basic': {
+            // 基础算法：直接取模
+            const modLuck = Math.abs(hashCode(userDateSeed)) % 101
+            luckScore = modLuck
+            break
+          }
+          case 'gaussian': {
+            // 正态分布算法
+            function normalRandom(seed: string): number {
+              const hash = hashCode(seed)
+              const randomFactor = Math.sin(hash) * 10000
+              return randomFactor - Math.floor(randomFactor)
+            }
+            function toNormalLuck(random: number): number {
+              const u1 = random
+              const u2 = normalRandom(random.toString())
+              const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2)
+              return Math.min(100, Math.max(0, Math.round(z * 15 + 50)))
+            }
+            const dateWeight = (targetDate.getDay() + 1) / 7
+            const baseRandom = normalRandom(userDateSeed)
+            const weightedRandom = (baseRandom + dateWeight) / 2
+            const normalLuck = toNormalLuck(weightedRandom)
+            luckScore = normalLuck
+            break
+          }
+          case 'linear': {
+            // 线性同余算法
+            const lcgSeed = hashCode(userDateSeed)
+            const lcgValue = (lcgSeed * 9301 + 49297) % 233280
+            const lcgRandom = lcgValue / 233280
+            const lcgLuck = Math.floor(lcgRandom * 101)
+            luckScore = lcgLuck
+            break
+          }
+          default: {
+            // 默认使用基础算法
+            luckScore = Math.abs(hashCode(userDateSeed)) % 101
+          }
+        }
+
+        // 构建返回消息
+        let message = session.text('commands.jrrp.messages.result', [luckScore, userNickname])
+        if (config.specialMessages && luckScore in config.specialMessages) {   // 修改key为specialMessages
+          message += session.text(config.specialMessages[luckScore])
+        } else if (config.rangeMessages) {                  // 修改key为rangeMessages
+          // 遍历所有范围配置
+          for (const [range, msg] of Object.entries(config.rangeMessages)) {
+            const [min, max] = range.split('-').map(Number)
+            if (!isNaN(min) && !isNaN(max) && luckScore >= min && luckScore <= max) {
+              message += session.text(msg)
+              break
             }
           }
         }
+        return message
+      } catch (error) {
+        console.error('今日人品计算失败:', error);
+        return session.text('commands.jrrp.messages.error');
       }
-      // 使用 "YYYY-MM-DD" 格式
-      const year = targetDate.getFullYear();
-      const monthStr = String(targetDate.getMonth() + 1).padStart(2, '0');
-      const dayStr = String(targetDate.getDate()).padStart(2, '0');
-      const currentDateStr = `${year}-${monthStr}-${dayStr}`;
-      const monthDay = `${monthStr}-${dayStr}`;
+    });
 
-      //特殊日期处理流程
-      if (config.holidayMessages?.[monthDay]) {
-        await session.send(session.text(config.holidayMessages[monthDay] + 'commands.jrrp.messages.prompt'));
-        const response = await session.prompt(10000);
-        if (!response) {
-          return session.text('commands.jrrp.messages.cancel');
-        }
+  // 辅助函数：解析日期
+  function parseDate(dateStr: string, defaultDate: Date): Date | null {
+    const fullDateMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    const shortDateMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})$/);
+
+    try {
+      if (fullDateMatch) {
+        const [_, year, month, day] = fullDateMatch;
+        return new Date(Number(year), Number(month) - 1, Number(day));
+      } else if (shortDateMatch) {
+        const [_, month, day] = shortDateMatch;
+        return new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
       }
-
-      // 获取用户昵称
-      const userNickname = session.username || 'User'
-
-      // 将字符串转换为32位无符号整数
-      function hashCode(str: string): number {
-        let hash = 5381
-        for (let i = 0; i < str.length; i++) {
-          hash = ((hash << 5) + hash) + str.charCodeAt(i)
-          hash = hash >>> 0 // 保持为32位无符号整数
-        }
-        return hash
-      }
-
-      let luckScore: number
-      const userDateSeed = `${session.userId}-${currentDateStr}`
-
-      // 根据选择的算法计算今日人品值
-      switch (config.choice || 'basic') {
-        case 'basic': {
-          // 基础算法：直接取模
-          const modLuck = Math.abs(hashCode(userDateSeed)) % 101
-          luckScore = modLuck
-          break
-        }
-        case 'gaussian': {
-          // 正态分布算法
-          function normalRandom(seed: string): number {
-            const hash = hashCode(seed)
-            const randomFactor = Math.sin(hash) * 10000
-            return randomFactor - Math.floor(randomFactor)
-          }
-          function toNormalLuck(random: number): number {
-            const u1 = random
-            const u2 = normalRandom(random.toString())
-            const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2)
-            return Math.min(100, Math.max(0, Math.round(z * 15 + 50)))
-          }
-          const dateWeight = (targetDate.getDay() + 1) / 7
-          const baseRandom = normalRandom(userDateSeed)
-          const weightedRandom = (baseRandom + dateWeight) / 2
-          const normalLuck = toNormalLuck(weightedRandom)
-          luckScore = normalLuck
-          break
-        }
-        case 'linear': {
-          // 线性同余算法
-          const lcgSeed = hashCode(userDateSeed)
-          const lcgValue = (lcgSeed * 9301 + 49297) % 233280
-          const lcgRandom = lcgValue / 233280
-          const lcgLuck = Math.floor(lcgRandom * 101)
-          luckScore = lcgLuck
-          break
-        }
-        default: {
-          // 默认使用基础算法
-          luckScore = Math.abs(hashCode(userDateSeed)) % 101
-        }
-      }
-
-      // 构建返回消息
-      let message = session.text('commands.jrrp.messages.result', [luckScore, userNickname])
-      if (config.specialMessages && luckScore in config.specialMessages) {   // 修改key为specialMessages
-        message += session.text(config.specialMessages[luckScore])
-      } else if (config.rangeMessages) {                  // 修改key为rangeMessages
-        // 遍历所有范围配置
-        for (const [range, msg] of Object.entries(config.rangeMessages)) {
-          const [min, max] = range.split('-').map(Number)
-          if (!isNaN(min) && !isNaN(max) && luckScore >= min && luckScore <= max) {
-            message += session.text(msg)
-            break
-          }
-        }
-      }
-      return message
-    })
+    } catch {
+      return null;
+    }
+    return null;
+  }
 }

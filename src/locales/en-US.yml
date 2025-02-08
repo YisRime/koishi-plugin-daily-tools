@@ -5,7 +5,7 @@ sleepconfig:
       $desc: "Mute Mode"
       $inner:
         - "Fixed Duration"
-        - "Specific Time"
+        - "Specified Time"
         - "Random Duration"
     duration: "Mute Duration (minutes)"
     until: "Mute End Time (HH:MM)"
@@ -18,11 +18,11 @@ autolikeconfig:
     $desc: "Auto-like Targets"
     $inner: "Target QQ Numbers"
   autoLikeTime:
-    $desc: "Auto-like Schedule"
+    $desc: "Auto-like Schedule (HH:MM)"
     $inner: "Daily like time (HH:MM)"
   notifyAccount:
-    $desc: "Notification Account"
-    $inner: "Account for like result notifications"
+    $desc: "Admin Account"
+    $inner: "For notifications and like returns"
 
 jrrpconfig:
   $desc: "Daily Luck Configuration"
@@ -30,8 +30,8 @@ jrrpconfig:
     $desc: "Algorithm Selection"
     $inner:
       - "Modulo Algorithm"
-      - "Normal Distribution"
-      - "Linear Congruential"
+      - "Normal Distribution Algorithm"
+      - "Linear Congruential Algorithm"
   rangeMessages:
     $desc: "Luck Range Messages (max 10)"
     $inner: "Set messages for different ranges"
@@ -47,14 +47,13 @@ commands:
     description: "Sleep Mode"
     usage: |-
       Automatically mute for specified duration
-      Supports three modes: Fixed Duration, Specific Time, Random Duration
+      Supports three modes: Fixed Duration, Specified Time, Random Duration
     examples: |-
       sleep
     messages:
       guild_only: "This feature is only available in group chats"
-      invalid_mode: "Invalid sleep mode setting"
-      success: "Good night, mute will be lifted in {0} minutes"
-      failed: "Failed to set mute, please check bot permissions"
+      success: "Good night, sweet dreams"
+      failed: "Sleep mode failed, please check bot permissions"
 
   zanwo:
     description: "Auto-like Me"
@@ -63,7 +62,7 @@ commands:
       zanwo
       likeme
     messages:
-      success: "Likes sent, don't forget to like me back~"
+      success: "Likes sent, please remember to like my master ({0}) back~"
       failure: "Like failed, please try again later"
 
   jrrp:
@@ -102,8 +101,8 @@ commands:
         9: "Backup"
         10: "Backup"
       date:
-        1: "Happy New Year! Today's luck is replaced with New Year's blessings~"
-        2: "Merry Christmas! May peace and joy be with you~"
+        1: "Happy New Year!"
+        2: "Merry Christmas!"
         3: "Backup"
         4: "Backup"
         5: "Backup"
@@ -112,3 +111,12 @@ commands:
         8: "Backup"
         9: "Backup"
         10: "Backup"
+
+errors:
+  invalid_session: "Invalid session"
+  invalid_time: "Invalid time format"
+  invalid_date: "Invalid date format"
+  invalid_duration: "Invalid duration"
+  plugin_load_failed: "Plugin load failed"
+  message_send_failed: "Failed to send message"
+  like_failed: "Failed to send likes"
