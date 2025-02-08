@@ -138,7 +138,7 @@ export async function apply(ctx: Context, config: Config) {
   // 通用函数
   const handleMute = async (session, targetId: string, duration: number, showMessage = true) => {
     try {
-      await session.bot.muteGuildMember(session.guildId, targetId, duration * 1000); // 转换为毫秒
+      await session.onebot.setGroupBan(session.guildId, targetId, duration);
       if (!showMessage || !config.mute.enableMessage) return null;
 
       const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
@@ -294,8 +294,8 @@ export async function apply(ctx: Context, config: Config) {
 
   // 精简后的mute命令
   ctx.command('mute [duration:number]')
-    .option('u', '-u [target:mention]', { authority: 2 }) // 修改类型为mention
-    .option('r', '-r', { authority: 2 })
+    .option('u', '-u [target:string]')
+    .option('r', '-r')
     .action(async ({ session, options }, duration) => {
       if (!session?.guildId) {
         return session.text('commands.mute.messages.guild_only');
@@ -330,12 +330,7 @@ export async function apply(ctx: Context, config: Config) {
 
       // 处理指定禁言
       if (options?.u) {
-        // 直接使用session.elements获取at的用户ID
-        const targetId = session.elements?.[0]?.attrs?.id || options.u;
-        if (!targetId) {
-          return session.text('commands.mute.messages.target_failed');
-        }
-
+        const targetId = options.u.replace(/[<@!>]/g, '');
         return random.bool(config.mute.probability)
           ? handleMute(session, targetId, muteDuration)
           : handleMute(session, session.userId, muteDuration);
