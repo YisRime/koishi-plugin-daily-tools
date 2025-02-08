@@ -80,6 +80,27 @@ commands:
       success: "点赞完成，记得赞我主人({0})哦~"
       failure: "点赞失败，请稍后重试"
 
+  mute:
+    description: "禁言自己或他人"
+    usage: |-
+      默认禁言自己
+      -u @用户 概率性禁言指定用户
+      -r 概率性禁言随机用户
+      参数: [时长] 指定禁言时长（分钟）
+    examples: |-
+      mute
+      mute 5
+      mute -u @用户
+      mute -r
+    messages:
+      guild_only: "此功能仅限群聊使用"
+      self_success: "已将你禁言{0}分钟{1}秒"
+      target_success: "已将{0}禁言{1}分钟{2}秒"
+      target_failed: "禁言失败，请检查权限或重试"
+      probability_failed_self: "禁言失败，已将你禁言{0}分钟{1}秒"
+      failed: "操作失败，请检查权限"
+      mute_others_disabled: "已禁用禁言他人功能"
+
   jrrp:
     description: "今日人品"
     usage: |-
@@ -127,25 +148,6 @@ commands:
         8: "备用"
         9: "备用"
         10: "备用"
-
-  mute:
-    description: "禁言自己或他人"
-    usage: |-
-      默认禁言自己
-      -u @用户 概率性禁言指定用户
-      参数: [时长] 指定禁言时长（分钟）
-    examples: |-
-      mute
-      mute 5
-      mute -u @用户
-    messages:
-      guild_only: "此功能仅限群聊使用"
-      self_success: "已将你禁言{0}分钟{1}秒"
-      target_success: "已将{0}禁言{1}分钟{2}秒"
-      target_failed: "禁言失败，请检查权限或重试"
-      probability_failed_self: "禁言失败，已将你禁言{0}分钟{1}秒"
-      failed: "操作失败，请检查权限"
-      mute_others_disabled: "已禁用禁言他人功能"
 
 errors:
   invalid_session: "无效的会话信息"

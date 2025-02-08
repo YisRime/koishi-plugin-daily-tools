@@ -4,8 +4,8 @@ import * as cron from 'koishi-plugin-cron'
 
 export const name = 'daily-tools'
 export const inject = {
-  required: ['database'],
-  optional: ['cron', 'adapter-onebot']
+  required: ['database', 'adapter-onebot'],
+  optional: ['cron']
 }
 
 // 定义不同的随机数生成算法，用于计算今日人品值
@@ -83,6 +83,24 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 
   Schema.object({
+    mute: Schema.object({
+      type: Schema.union([
+        Schema.const(MuteDurationType.STATIC),
+        Schema.const(MuteDurationType.RANDOM),
+      ]).default(MuteDurationType.RANDOM),
+      duration: Schema.number().default(5),
+      minDuration: Schema.number().default(0.1),
+      maxDuration: Schema.number().default(10),
+      enableMessage: Schema.boolean().default(false),
+      enableMuteOthers: Schema.boolean().default(true),
+      probability: Schema.number().default(0.5).min(0).max(1),
+    }),
+  }).i18n({
+    'zh-CN': require('./locales/zh-CN').muteconfig,
+    'en-US': require('./locales/en-US').muteconfig,
+  }),
+
+  Schema.object({
     choice: Schema.union([
       Schema.const(JrrpAlgorithm.BASIC),
       Schema.const(JrrpAlgorithm.GAUSSIAN),
@@ -111,34 +129,44 @@ export const Config: Schema<Config> = Schema.intersect([
     'zh-CN': require('./locales/zh-CN').jrrpconfig,
     'en-US': require('./locales/en-US').jrrpconfig,
   }),
-
-  Schema.object({
-    mute: Schema.object({
-      type: Schema.union([
-        Schema.const(MuteDurationType.STATIC),
-        Schema.const(MuteDurationType.RANDOM),
-      ]).default(MuteDurationType.STATIC),
-      duration: Schema.number().default(5),
-      minDuration: Schema.number().default(0.1),
-      maxDuration: Schema.number().default(10),
-      enableMessage: Schema.boolean().default(false),
-      enableMuteOthers: Schema.boolean().default(true),
-      probability: Schema.number().default(0.5).min(0).max(1),
-    }),
-  }).i18n({
-    'zh-CN': require('./locales/zh-CN').muteconfig,
-    'en-US': require('./locales/en-US').muteconfig,
-  }),
 ])
 
 export async function apply(ctx: Context, config: Config) {
-    ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
-    ctx.i18n.define('en-US', require('./locales/en-US'));
+  ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
+  ctx.i18n.define('en-US', require('./locales/en-US'));
 
-  // 注册精致睡眠命令
+  // 通用函数
+  const handleMute = async (session, targetId: string, duration: number, showMessage = true) => {
+    try {
+      await session.onebot.setGroupBan(session.guildId, targetId, duration);
+      if (!showMessage || !config.mute.enableMessage) return null;
+
+      const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
+      const params = [await getUserName(session, targetId), minutes, seconds].filter(Boolean);
+      return session.text(
+        targetId === session.userId
+          ? 'commands.mute.messages.self_success'
+          : 'commands.mute.messages.target_success',
+        params
+      );
+    } catch (error) {
+      console.error(`Mute failed for ${targetId}:`, error);
+      return session.text('commands.mute.messages.failed');
+    }
+  };
+
+  const getUserName = async (session, userId: string) => {
+    try {
+      const user = await ctx.database.getUser(session.platform, userId);
+      return user?.name || userId;
+    } catch {
+      return userId;
+    }
+  };
+
+  // 命令注册
   ctx.command('sleep')
-    .alias('jzsm')
-    .alias('精致睡眠')
+    .alias('jzsm', '精致睡眠')
     .action(async ({ session }) => {
       try {
         if (!session?.guildId) {
@@ -190,7 +218,6 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 注册手动点赞命令
   ctx.command('zanwo')
     .alias('赞我')
     .action(async ({ session }) => {
@@ -264,6 +291,54 @@ export async function apply(ctx: Context, config: Config) {
       console.error('自动点赞任务注册失败:', error);
     }
   }
+
+  // 精简后的mute命令
+  ctx.command('mute [duration:number]')
+    .option('u', '-u [target:string]', { authority: 2 })
+    .option('r', '-r', { authority: 2 })
+    .action(async ({ session, options }, duration) => {
+      if (!session?.guildId) {
+        return session.text('commands.mute.messages.guild_only');
+      }
+
+      if (!config.mute.enableMuteOthers && (options?.u || options?.r)) {
+        return session.text('commands.mute.messages.mute_others_disabled');
+      }
+
+      const random = new Random();
+      const muteDuration = duration ? duration * 60
+        : config.mute.type === MuteDurationType.RANDOM
+          ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60)
+          : config.mute.duration * 60;
+
+      // 处理随机禁言
+      if (options?.r) {
+        try {
+          const members = (await session.onebot.getGroupMemberList(session.guildId))
+            .map(m => m.user_id.toString())
+            .filter(id => id !== session.selfId && id !== session.userId);
+
+          if (!members.length) return session.text('commands.mute.messages.failed');
+
+          return random.bool(config.mute.probability)
+            ? handleMute(session, random.pick(members), muteDuration)
+            : handleMute(session, session.userId, muteDuration);
+        } catch {
+          return session.text('commands.mute.messages.failed');
+        }
+      }
+
+      // 处理指定禁言
+      if (options?.u) {
+        const targetId = options.u.replace(/[<@!>]/g, '');
+        return random.bool(config.mute.probability)
+          ? handleMute(session, targetId, muteDuration)
+          : handleMute(session, session.userId, muteDuration);
+      }
+
+      // 禁言自己
+      return handleMute(session, session.userId, muteDuration);
+    });
 
   // 注册今日人品命令
   ctx.command('jrrp')
@@ -374,131 +449,6 @@ export async function apply(ctx: Context, config: Config) {
       } catch (error) {
         console.error('今日人品计算失败:', error);
         return session.text('commands.jrrp.messages.error');
-      }
-    });
-
-  // 修改 mute 命令部分
-  ctx.command('mute [duration:number]')
-    .option('u', '-u [target:string]', { authority: 2 })
-    .action(async ({ session, options }, duration) => {
-      try {
-        if (!session?.guildId) {
-          return session.text('commands.mute.messages.guild_only');
-        }
-
-        // 获取用户昵称的函数
-        async function getUserName(userId: string): Promise<string> {
-          try {
-            // 尝试从数据库获取用户信息
-            const user = await ctx.database.getUser(session.platform, userId);
-            return user?.name || userId;
-          } catch (error) {
-            console.error(`Failed to get user info for ${userId}:`, error);
-            return userId;
-          }
-        }
-
-        const random = new Random(() => Math.random());
-        let muteDuration: number;
-
-        // 计算禁言时长（秒）
-        if (duration) {
-          muteDuration = duration * 60; // 输入的时间依然按分钟计算
-        } else if (config.mute.type === MuteDurationType.RANDOM) {
-          // 随机时长精确到秒
-          const minSeconds = config.mute.minDuration * 60;
-          const maxSeconds = config.mute.maxDuration * 60;
-          muteDuration = random.int(minSeconds, maxSeconds);
-        } else {
-          muteDuration = config.mute.duration * 60;
-        }
-
-        // 更新格式化显示时间函数
-        const formatDuration = (seconds: number) => {
-          const minutes = Math.floor(seconds / 60);
-          const remainingSeconds = seconds % 60;
-          if (remainingSeconds === 0) {
-            return [minutes, null]; // 只有分钟
-          }
-          return [minutes, remainingSeconds]; // 分钟和秒
-        };
-
-        // 禁言指定目标
-        if (options?.u) {
-          if (!config.mute.enableMuteOthers) {
-            return session.text('commands.mute.messages.mute_others_disabled');
-          }
-
-          const targetId = options.u.replace(/[<@!>]/g, '');
-          // 获取目标用户昵称
-          const targetName = await getUserName(targetId);
-
-          if (random.bool(config.mute.probability)) {
-            try {
-              await session.onebot.setGroupBan(
-                session.guildId,
-                targetId,
-                muteDuration
-              );
-              if (config.mute.enableMessage) {
-                const [minutes, seconds] = formatDuration(muteDuration);
-                return session.text('commands.mute.messages.target_success', [
-                  targetName,
-                  minutes,
-                  seconds
-                ].filter(Boolean));
-              }
-              return null;
-            } catch (error) {
-              console.error(`Failed to mute target ${targetId}:`, error);
-              return session.text('commands.mute.messages.target_failed');
-            }
-          } else {
-            // 获取自己的昵称
-            const selfName = await getUserName(session.userId);
-            try {
-              await session.onebot.setGroupBan(
-                session.guildId,
-                session.userId,
-                muteDuration
-              );
-              if (config.mute.enableMessage) {
-                const [minutes, seconds] = formatDuration(muteDuration);
-                return session.text('commands.mute.messages.probability_failed_self', [
-                  minutes,
-                  seconds
-                ].filter(Boolean));
-              }
-              return null;
-            } catch (error) {
-              console.error(`Failed to self mute on probability failure ${session.userId}:`, error);
-              return session.text('commands.mute.messages.failed');
-            }
-          }
-        }
-
-        // 禁言自己
-        try {
-          await session.onebot.setGroupBan(
-            session.guildId,
-            session.userId,
-            muteDuration
-          );
-          if (config.mute.enableMessage) {
-            const [minutes, seconds] = formatDuration(muteDuration);
-            return session.text('commands.mute.messages.self_success', [
-              minutes,
-              seconds
-            ].filter(Boolean));
-          }
-          return null;
-        } catch (error) {
-          console.error(`Failed to self mute ${session.userId}:`, error);
-          return session.text('commands.mute.messages.failed');
-        }
-      } catch (error) {
-        console.error('Mute command failed:', error);
-        return session.text('commands.mute.messages.failed');
       }
     });
 

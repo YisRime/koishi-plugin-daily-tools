@@ -80,6 +80,27 @@ commands:
       success: "Likes sent, remember to like my master ({0}) back~"
       failure: "Like failed, please try again later"
 
+  mute:
+    description: "Mute Self or Others"
+    usage: |-
+      Mutes yourself by default
+      -u @user Probability-based mute for specified user
+      -r Probability-based mute for random user
+      Parameters: [duration] Specify mute duration (minutes)
+    examples: |-
+      mute
+      mute 5
+      mute -u @user
+      mute -r
+    messages:
+      guild_only: "This feature is only available in group chats"
+      self_success: "You have been muted for {0} minutes {1} seconds"
+      target_success: "{0} has been muted for {1} minutes {2} seconds"
+      target_failed: "Mute failed, please check permissions or try again"
+      probability_failed_self: "Mute failed, you have been muted for {0} minutes {1} seconds"
+      failed: "Operation failed, please check permissions"
+      mute_others_disabled: "Muting others is disabled"
+
   jrrp:
     description: "Daily Fortune"
     usage: |-
@@ -127,25 +148,6 @@ commands:
         8: "Reserved"
         9: "Reserved"
         10: "Reserved"
-
-  mute:
-    description: "Mute Self or Others"
-    usage: |-
-      Mutes yourself by default
-      -u @user Probability-based mute for specified user
-      Parameters: [duration] Specify mute duration (minutes)
-    examples: |-
-      mute
-      mute 5
-      mute -u @user
-    messages:
-      guild_only: "This feature is only available in group chats"
-      self_success: "You have been muted for {0} minutes {1} seconds"
-      target_success: "{0} has been muted for {1} minutes {2} seconds"
-      target_failed: "Mute failed, please check permissions or try again"
-      probability_failed_self: "Mute failed, you have been muted for {0} minutes {1} seconds"
-      failed: "Operation failed, please check permissions"
-      mute_others_disabled: "Muting others is disabled"
 
 errors:
   invalid_session: "Invalid session information"
