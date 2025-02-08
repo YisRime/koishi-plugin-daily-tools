@@ -13,19 +13,19 @@ sleepconfig:
     max: "Maximum Mute Duration (minutes)"
 
 autolikeconfig:
-  $desc: "Auto-like Configuration"
+  $desc: "Auto-Like Configuration"
   autoLikeList:
-    $desc: "Auto-like Targets"
+    $desc: "Auto-Like Targets"
     $inner: "Target QQ Numbers"
   autoLikeTime:
-    $desc: "Auto-like Schedule (HH:MM)"
-    $inner: "Daily like time (HH:MM)"
+    $desc: "Scheduled Like Time (HH:MM)"
+    $inner: "Daily Like Time (HH:MM)"
   notifyAccount:
     $desc: "Admin Account"
-    $inner: "For notifications and like returns"
+    $inner: "For receiving like notifications and as like reciprocity target"
 
 jrrpconfig:
-  $desc: "Daily Luck Configuration"
+  $desc: "Daily Fortune Configuration"
   choice:
     $desc: "Algorithm Selection"
     $inner:
@@ -33,14 +33,29 @@ jrrpconfig:
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
   rangeMessages:
-    $desc: "Luck Range Messages (max 10)"
-    $inner: "Set messages for different ranges"
+    $desc: "Fortune Range Settings (max 10)"
+    $inner: "Set prompts for different ranges"
   specialMessages:
     $desc: "Special Value Messages (max 10)"
-    $inner: "Set messages for specific values"
+    $inner: "Set prompts for specific values"
   holidayMessages:
     $desc: "Holiday Messages (max 10)"
-    $inner: "Set messages for specific dates"
+    $inner: "Set prompts for specific dates"
+
+muteconfig:
+  $desc: "Random Mute Configuration"
+  mute:
+    type:
+      $desc: "Mute Mode"
+      $inner:
+        - "Fixed Duration"
+        - "Random Duration"
+    duration: "Fixed Mute Duration (minutes)"
+    minDuration: "Minimum Mute Duration (minutes)"
+    maxDuration: "Maximum Mute Duration (minutes)"
+    enableMuteOthers: "Allow Muting Others"
+    probability: "Success Probability for Muting Others"
+    enableMessage: "Enable Mute Notification Message"
 
 commands:
   sleep:
@@ -52,34 +67,35 @@ commands:
       sleep
     messages:
       guild_only: "This feature is only available in group chats"
-      success: "Good night, sweet dreams"
+      success: "Good night, sweet dreams!"
       failed: "Sleep mode failed, please check bot permissions"
 
   zanwo:
-    description: "Auto-like Me"
-    usage: "Send command to get likes from the bot, max 50 likes"
+    description: "Auto-Like"
+    usage: "Send command to receive likes from the bot (max 50 likes)"
     examples: |-
       zanwo
       likeme
     messages:
-      success: "Likes sent, please remember to like my master ({0}) back~"
+      success: "Likes sent, remember to like my master ({0}) back~"
       failure: "Like failed, please try again later"
 
   jrrp:
-    description: "Daily Luck"
+    description: "Daily Fortune"
     usage: |-
-      Send command to check your luck value today
+      Send command to check your fortune value for today
     examples: |-
       jrrp
-      jrrp -d 2025-01-01
+      jrrp -d 1970-01-01
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
-      result: "{1} Your luck value today is: {0}"
-      prompt: "Would you like to check your luck today?"
+      result: "{1} Your fortune value today is: {0}"
+      prompt: "Would you like to see your fortune for today?"
       cancel: "Alright, have a nice day!"
+      error: "An error occurred, please try again"
       range:
-        1: "...(It's percentile by the way)"
+        1: "...(on a scale of 100)"
         2: "?! No way..."
         3: ". Ugh..."
         4: "! Barely acceptable...?"
@@ -87,36 +103,55 @@ commands:
         6: ". Pretty good luck today!"
         7: "! Outstanding!"
         8: "! Almost perfect..."
-        9: "Backup"
-        10: "Backup"
+        9: "Reserved"
+        10: "Reserved"
       special:
-        1: "! Terrible!"
-        2: "! Fifty-fifty..."
+        1: "! Terrible luck!"
+        2: "! Perfectly balanced..."
         3: "! 100! 100!!!!"
-        4: "Backup"
-        5: "Backup"
-        6: "Backup"
-        7: "Backup"
-        8: "Backup"
-        9: "Backup"
-        10: "Backup"
+        4: "Reserved"
+        5: "Reserved"
+        6: "Reserved"
+        7: "Reserved"
+        8: "Reserved"
+        9: "Reserved"
+        10: "Reserved"
       date:
         1: "Happy New Year!"
         2: "Merry Christmas!"
-        3: "Backup"
-        4: "Backup"
-        5: "Backup"
-        6: "Backup"
-        7: "Backup"
-        8: "Backup"
-        9: "Backup"
-        10: "Backup"
+        3: "Reserved"
+        4: "Reserved"
+        5: "Reserved"
+        6: "Reserved"
+        7: "Reserved"
+        8: "Reserved"
+        9: "Reserved"
+        10: "Reserved"
+
+  mute:
+    description: "Mute Self or Others"
+    usage: |-
+      Mutes yourself by default
+      -u @user Probability-based mute for specified user
+      Parameters: [duration] Specify mute duration (minutes)
+    examples: |-
+      mute
+      mute 5
+      mute -u @user
+    messages:
+      guild_only: "This feature is only available in group chats"
+      self_success: "You have been muted for {0} minutes {1} seconds"
+      target_success: "{0} has been muted for {1} minutes {2} seconds"
+      target_failed: "Mute failed, please check permissions or try again"
+      probability_failed_self: "Mute failed, you have been muted for {0} minutes {1} seconds"
+      failed: "Operation failed, please check permissions"
+      mute_others_disabled: "Muting others is disabled"
 
 errors:
-  invalid_session: "Invalid session"
+  invalid_session: "Invalid session information"
   invalid_time: "Invalid time format"
   invalid_date: "Invalid date format"
-  invalid_duration: "Invalid duration"
-  plugin_load_failed: "Plugin load failed"
-  message_send_failed: "Failed to send message"
-  like_failed: "Failed to send likes"
+  invalid_duration: "Invalid duration range"
+  plugin_load_failed: "Plugin failed to load"
+  message_send_failed: "Message failed to send"
+  like_failed: "Like operation failed"
