@@ -74,23 +74,23 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(JrrpAlgorithm.LINEAR),
     ]).default(JrrpAlgorithm.BASIC),
     rangeMessages: Schema.dict(String).default({
-      '0-9': 'commands.jrrpmessages.range.1',
-      '10-19': 'commands.jrrpmessages.range.2',
-      '20-39': 'commands.jrrpmessages.range.3',
-      '40-49': 'commands.jrrpmessages.range.4',
-      '50-69': 'commands.jrrpmessages.range.5',
-      '70-89': 'commands.jrrpmessages.range.6',
-      '90-95': 'commands.jrrpmessages.range.7',
-      '96-100': 'commands.jrrpmessages.range.8'
+      '0-9': 'commands.jrrp.messages.range.1',
+      '10-19': 'commands.jrrp.messages.range.2',
+      '20-39': 'commands.jrrp.messages.range.3',
+      '40-49': 'commands.jrrp.messages.range.4',
+      '50-69': 'commands.jrrp.messages.range.5',
+      '70-89': 'commands.jrrp.messages.range.6',
+      '90-95': 'commands.jrrp.messages.range.7',
+      '96-100': 'commands.jrrp.messages.range.8'
     }),
     specialMessages: Schema.dict(String).default({
-      0: 'commands.jrrpmessages.special.1',
-      50: 'commands.jrrpmessages.special.2',
-      100: 'commands.jrrpmessages.special.3'
+      0: 'commands.jrrp.messages.special.1',
+      50: 'commands.jrrp.messages.special.2',
+      100: 'commands.jrrp.messages.special.3'
     }),
     holidayMessages: Schema.dict(String).default({
-      '01-01': 'commands.jrrpmessages.date.1',
-      '12-25': 'commands.jrrpmessages.date.2'
+      '01-01': 'commands.jrrp.messages.date.1',
+      '12-25': 'commands.jrrp.messages.date.2'
     })
   }).i18n({
     'zh-CN': require('./locales/zh-CN').jrrpconfig,
