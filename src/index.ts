@@ -4,8 +4,8 @@ import * as cron from 'koishi-plugin-cron'
 
 export const name = 'daily-tools'
 export const inject = {
-  required: ['database', 'adapter-onebot'],
-  optional: ['cron']
+  required: ['database'],
+  optional: ['cron', 'adapter-onebot']
 }
 
 // 定义不同的随机数生成算法，用于计算今日人品值
