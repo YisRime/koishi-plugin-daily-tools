@@ -1,0 +1,114 @@
+sleepconfig:
+  $desc: "Sleep Mode Configuration"
+  sleep:
+    type:
+      $desc: "Mute Mode"
+      $inner:
+        - "Fixed Duration"
+        - "Specific Time"
+        - "Random Duration"
+    duration: "Mute Duration (minutes)"
+    until: "Mute End Time (HH:MM)"
+    min: "Minimum Mute Duration (minutes)"
+    max: "Maximum Mute Duration (minutes)"
+
+autolikeconfig:
+  $desc: "Auto-like Configuration"
+  autoLikeList:
+    $desc: "Auto-like Targets"
+    $inner: "Target QQ Numbers"
+  autoLikeTime:
+    $desc: "Auto-like Schedule"
+    $inner: "Daily like time (HH:MM)"
+  notifyAccount:
+    $desc: "Notification Account"
+    $inner: "Account for like result notifications"
+
+jrrpconfig:
+  $desc: "Daily Luck Configuration"
+  choice:
+    $desc: "Algorithm Selection"
+    $inner:
+      - "Modulo Algorithm"
+      - "Normal Distribution"
+      - "Linear Congruential"
+  rangeMessages:
+    $desc: "Luck Range Messages (max 10)"
+    $inner: "Set messages for different ranges"
+  specialMessages:
+    $desc: "Special Value Messages (max 10)"
+    $inner: "Set messages for specific values"
+  holidayMessages:
+    $desc: "Holiday Messages (max 10)"
+    $inner: "Set messages for specific dates"
+
+commands:
+  sleep:
+    description: "Sleep Mode"
+    usage: |-
+      Automatically mute for specified duration
+      Supports three modes: Fixed Duration, Specific Time, Random Duration
+    examples: |-
+      sleep
+    messages:
+      guild_only: "This feature is only available in group chats"
+      invalid_mode: "Invalid sleep mode setting"
+      success: "Good night, mute will be lifted in {0} minutes"
+      failed: "Failed to set mute, please check bot permissions"
+
+  zanwo:
+    description: "Auto-like Me"
+    usage: "Send command to get likes from the bot, max 50 likes"
+    examples: |-
+      zanwo
+      likeme
+    messages:
+      success: "Likes sent, don't forget to like me back~"
+      failure: "Like failed, please try again later"
+
+  jrrp:
+    description: "Daily Luck"
+    usage: |-
+      Send command to check your luck value today
+    examples: |-
+      jrrp
+      jrrp -d 2025-01-01
+    options:
+      d: "Specify date (YYYY-MM-DD or MM-DD)"
+    messages:
+      result: "{1} Your luck value today is: {0}"
+      prompt: "Would you like to check your luck today?"
+      cancel: "Alright, have a nice day!"
+      range:
+        1: "...(It's percentile by the way)"
+        2: "?! No way..."
+        3: ". Ugh..."
+        4: "! Barely acceptable...?"
+        5: ". Not bad, not bad."
+        6: ". Pretty good luck today!"
+        7: "! Outstanding!"
+        8: "! Almost perfect..."
+        9: "Backup"
+        10: "Backup"
+      special:
+        1: "! Terrible!"
+        2: "! Fifty-fifty..."
+        3: "! 100! 100!!!!"
+        4: "Backup"
+        5: "Backup"
+        6: "Backup"
+        7: "Backup"
+        8: "Backup"
+        9: "Backup"
+        10: "Backup"
+      date:
+        1: "Happy New Year! Today's luck is replaced with New Year's blessings~"
+        2: "Merry Christmas! May peace and joy be with you~"
+        3: "Backup"
+        4: "Backup"
+        5: "Backup"
+        6: "Backup"
+        7: "Backup"
+        8: "Backup"
+        9: "Backup"
+        10: "Backup"

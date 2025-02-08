@@ -1,0 +1,114 @@
+sleepconfig:
+  $desc: "精致睡眠配置"
+  sleep:
+    type:
+      $desc: "禁言模式"
+      $inner:
+        - "固定时长"
+        - "指定时间"
+        - "随机时长"
+    duration: "禁言时长（分钟）"
+    until: "禁言结束时间（HH:MM）"
+    min: "最短禁言时长（分钟）"
+    max: "最长禁言时长（分钟）"
+
+autolikeconfig:
+  $desc: "点赞配置"
+  autoLikeList:
+    $desc: "自动点赞目标"
+    $inner: "目标QQ"
+  autoLikeTime:
+    $desc: "定时点赞时间"
+    $inner: "每日点赞时间（HH:MM）"
+  notifyAccount:
+    $desc: "通知账号"
+    $inner: "用于点赞结果通知"
+
+jrrpconfig:
+  $desc: "今日人品配置"
+  choice:
+    $desc: "算法选择"
+    $inner:
+      - "取模算法"
+      - "正态分布算法"
+      - "线性同余算法"
+  rangeMessages:
+    $desc: "人品区间配置（最多10条）"
+    $inner: "设置不同区间对应提示"
+  specialMessages:
+    $desc: "特定数值提示（最多10条）"
+    $inner: "设置特定数值对应提示"
+  holidayMessages:
+    $desc: "特定日期提示（最多10条）"
+    $inner: "设置特定日期对应提示"
+
+commands:
+  sleep:
+    description: "精致睡眠"
+    usage: |-
+      自动禁言指定时长
+      支持三种模式：固定时长、指定时间、随机时长
+    examples: |-
+      精致睡眠
+    messages:
+      guild_only: "此功能仅支持群聊使用"
+      invalid_mode: "睡眠模式设置无效"
+      success: "晚安，将在 {0} 分钟后自动解除禁言"
+      failed: "设置禁言失败，请确认机器人权限"
+
+  zanwo:
+    description: "自动为您点赞"
+    usage: "发送命令即可让机器人赞你，上限50个赞"
+    examples: |-
+      zanwo
+      赞我
+    messages:
+      success: "点赞完成，记得赞主人哦~"
+      failure: "点赞失败，请稍后重试"
+
+  jrrp:
+    description: "今日运势"
+    usage: |-
+      发送命令查看今日人品值
+    examples: |-
+      jrrp
+      jrrp -d 2025-01-01
+    options:
+      d: "指定日期（YYYY-MM-DD 或 MM-DD）"
+    messages:
+      result: "{1} 你今天的人品值是：{0}"
+      prompt: "你要看看今天的人品吗？"
+      cancel: "好的，祝您今天愉快！"
+      range:
+        1: "……（是百分制哦）"
+        2: "？！不会吧……"
+        3: "。呜……"
+        4: "！勉强还行吧……？"
+        5: "。还行啦，还行啦。"
+        6: "。今天运气不错呢！"
+        7: "！好评如潮！"
+        8: "！差点就到 100 了呢……"
+        9: "备用"
+        10: "备用"
+      special:
+        1: "！差评如潮！"
+        2: "！五五开……"
+        3: "！100！100！！！！！"
+        4: "备用"
+        5: "备用"
+        6: "备用"
+        7: "备用"
+        8: "备用"
+        9: "备用"
+        10: "备用"
+      date:
+        1: "新年快乐！今天的运势由新年祝福替代啦~"
+        2: "圣诞快乐！愿平安喜乐与你相伴~"
+        3: "备用"
+        4: "备用"
+        5: "备用"
+        6: "备用"
+        7: "备用"
+        8: "备用"
+        9: "备用"
+        10: "备用"
