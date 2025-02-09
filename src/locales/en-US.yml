@@ -23,6 +23,9 @@ autolikeconfig:
   notifyAccount:
     $desc: "Admin Account"
     $inner: "For receiving like notifications and as like reciprocity target"
+  enableLikeReminder:
+    $desc: "Enable Like Reminder"
+    $inner: "When enabled, reminds users to like the master after completion"
 
 jrrpconfig:
   $desc: "Daily Fortune Configuration"
@@ -78,6 +81,7 @@ commands:
       likeme
     messages:
       success: "Likes sent, remember to like my master ({0}) back~"
+      success_no_reminder: "Likes sent successfully"
       failure: "Like failed, please try again later"
 
   mute:

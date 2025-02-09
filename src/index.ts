@@ -39,6 +39,7 @@ export interface Config {
   autoLikeList?: string[]
   autoLikeTime?: string
   notifyAccount?: string
+  enableLikeReminder?: boolean // 添加是否提示赞主人的选项
   choice?: JrrpAlgorithm
   specialMessages?: Record<number, string>
   rangeMessages?: Record<string, string>
@@ -77,6 +78,7 @@ export const Config: Schema<Config> = Schema.intersect([
     autoLikeList: Schema.array(String),
     autoLikeTime: Schema.string(),
     notifyAccount: Schema.string(),
+    enableLikeReminder: Schema.boolean().default(true),
   }).i18n({
     'zh-CN': require('./locales/zh-CN').autolikeconfig,
     'en-US': require('./locales/en-US').autolikeconfig,
@@ -234,11 +236,15 @@ export async function apply(ctx: Context, config: Config) {
             await session.bot.internal.sendLike(session.userId, 10);
             successfulLikes += 1;
           }
-          return session.text('commands.zanwo.messages.success', [config.notifyAccount]);
+          return config.enableLikeReminder
+            ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
+            : session.text('commands.zanwo.messages.success_no_reminder');
         } catch (error) {
           if (retry === maxRetries - 1) {
             return successfulLikes > 0
-              ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
+              ? (config.enableLikeReminder
+                ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
+                : session.text('commands.zanwo.messages.success_no_reminder'))
               : session.text('errors.like_failed');
           }
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -294,7 +300,7 @@ export async function apply(ctx: Context, config: Config) {
 
   // 精简后的mute命令
   ctx.command('mute [duration:number]')
-    .option('u', '-u [target:string]')
+    .option('u', '-u <target:user>', { type: 'user' })  // 使用user类型
     .option('r', '-r')
     .action(async ({ session, options }, duration) => {
       if (!session?.guildId) {
@@ -330,7 +336,7 @@ export async function apply(ctx: Context, config: Config) {
 
       // 处理指定禁言
       if (options?.u) {
-        const targetId = options.u.replace(/[<@!>]/g, '');
+        const targetId = options.u;  // Koishi会自动解析@用户
         return random.bool(config.mute.probability)
           ? handleMute(session, targetId, muteDuration)
           : handleMute(session, session.userId, muteDuration);

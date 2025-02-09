@@ -23,6 +23,9 @@ autolikeconfig:
   notifyAccount:
     $desc: "管理员账号"
     $inner: "用于接收点赞通知和作为点赞回报对象"
+  enableLikeReminder:
+    $desc: "是否提示赞主人"
+    $inner: "开启后会在点赞完成时提示需要赞主人"
 
 jrrpconfig:
   $desc: "今日人品配置"
@@ -78,19 +81,18 @@ commands:
       赞我
     messages:
       success: "点赞完成，记得赞我主人({0})哦~"
+      success_no_reminder: "点赞完成"
       failure: "点赞失败，请稍后重试"
 
   mute:
     description: "禁言自己或他人"
     usage: |-
-      默认禁言自己
-      -u @用户 概率性禁言指定用户
-      -r 概率性禁言随机用户
-      参数: [时长] 指定禁言时长（分钟）
+      -u 禁言指定用户
+      -r 禁言随机用户
+      [时长] 指定禁言时长（分钟）
     examples: |-
-      mute
-      mute 5
-      mute -u @用户
+      mute [5]
+      mute -u [User]
       mute -r
     messages:
       guild_only: "此功能仅限群聊使用"
@@ -104,7 +106,7 @@ commands:
   jrrp:
     description: "今日人品"
     usage: |-
-      发送命令查看今日人品值
+      发送命令查看今日人品
     examples: |-
       jrrp
       jrrp -d 1970-01-01
