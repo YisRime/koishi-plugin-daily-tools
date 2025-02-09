@@ -1,4 +1,4 @@
-import { Context, Schema, Random } from 'koishi'
+import { Context, Schema, Random, h } from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
 import * as cron from 'koishi-plugin-cron'
 
@@ -300,7 +300,7 @@ export async function apply(ctx: Context, config: Config) {
 
   // 精简后的mute命令
   ctx.command('mute [duration:number]')
-    .option('u', '-u <target:user>', { type: 'user' })  // 使用user类型
+    .option('u', '-u <target:text>')  // 改为text类型
     .option('r', '-r')
     .action(async ({ session, options }, duration) => {
       if (!session?.guildId) {
@@ -336,7 +336,14 @@ export async function apply(ctx: Context, config: Config) {
 
       // 处理指定禁言
       if (options?.u) {
-        const targetId = options.u;  // Koishi会自动解析@用户
+        const parsedUser = h.parse(options.u)[0];
+        // 支持at和直接输入QQ号两种方式
+        const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
+
+        if (!targetId) {
+          return session.text('commands.mute.messages.target_failed');
+        }
+
         return random.bool(config.mute.probability)
           ? handleMute(session, targetId, muteDuration)
           : handleMute(session, session.userId, muteDuration);
