@@ -1,11 +1,11 @@
 sleepconfig:
-  $desc: "Sleep Mode Configuration"
+  $desc: "Sleep Configuration"
   sleep:
     type:
-      $desc: "Mute Mode"
+      $desc: "Sleep Mode"
       $inner:
         - "Fixed Duration"
-        - "Until Specific Time"
+        - "Until Specified Time"
         - "Random Duration"
     duration: "Mute Duration (minutes)"
     until: "Mute End Time (HH:MM)"
@@ -13,16 +13,16 @@ sleepconfig:
     max: "Maximum Mute Duration (minutes)"
 
 autolikeconfig:
-  $desc: "Auto-like Configuration"
+  $desc: "Auto-Like Configuration"
   autoLikeList:
-    $desc: "Auto-like Targets"
+    $desc: "Auto-Like Targets"
     $inner: "Target QQ Numbers"
   autoLikeTime:
-    $desc: "Scheduled Like Time (HH:MM)"
+    $desc: "Auto-Like Time (HH:MM)"
     $inner: "Daily Like Time (HH:MM)"
   notifyAccount:
     $desc: "Admin Account"
-    $inner: "For receiving like notifications and as like return target"
+    $inner: "For receiving like notifications and as like recipient"
   enableLikeReminder:
     $desc: "Enable Owner Like Reminder"
     $inner: "When enabled, reminds to like the owner after completion"
@@ -58,15 +58,15 @@ muteconfig:
     maxDuration: "Maximum Mute Duration (minutes)"
     maxAllowedDuration: "Maximum Allowed Mute Duration (minutes)"
     enableMuteOthers: "Allow Muting Others"
-    probability: "Probability of Muting Others"
+    probability: "Success Probability for Muting Others"
     enableMessage: "Enable Mute Notification Messages"
 
 commands:
   sleep:
     description: "Sleep Mode"
     usage: |-
-      Automatically mutes for specified duration
-      Supports three modes: Fixed Duration, Until Specific Time, Random Duration
+      Automatically mute for specified duration
+      Supports three modes: Fixed Duration, Until Time, Random Duration
     examples: |-
       sleep
     messages:
@@ -75,68 +75,63 @@ commands:
       failed: "Sleep mode failed, please check bot permissions"
 
   zanwo:
-    description: "Auto-like Feature"
+    description: "Auto Like Me"
     usage: "Send command to receive likes from bot (max 50 likes)"
     examples: |-
       zanwo
-      likeme
+      like me
     messages:
-      success: "Likes sent, remember to like my owner ({0})"
-      success_no_reminder: "Likes sent successfully"
+      success: "Likes sent, remember to like my owner ({0})~"
+      success_no_reminder: "Likes sent, remember to like my owner~"
 
   mute:
     description: "Mute Self or Others"
     usage: |-
-      -u Mute specific user
-      -r Mute random user
-      [duration] Specify mute duration (minutes)
+      -u mute specified user
+      -r mute random user
+      [duration] specify mute duration (minutes)
     examples: |-
-      mute [5]
-      mute -u [User]
-      mute -r
+      mute -u/r [1]
     messages:
       errors:
         guild_only: "This feature is only available in group chats"
-        no_valid_members: "No valid members available to mute"
-        target_not_found: "Target user not found"
+        no_valid_members: "No valid members available for muting"
+        target_not_found: "Specified user not found"
         target_is_admin: "Cannot mute administrators"
-        target_failed: "Mute operation failed, check permissions and try again"
-        no_permission: "Bot doesn't have sufficient permissions to mute"
-        duration_too_long: "Mute duration exceeds limit ({0} minutes), operation cancelled"
+        target_failed: "Mute failed, insufficient permissions"
+        duration_too_long: "Mute duration exceeds limit ({0} minutes)"
       notify:
         self_muted: "You have been muted for {0} minutes {1} seconds"
         target_muted: "{0} has been muted for {1} minutes {2} seconds"
-        probability_failed: "Probability check failed, executing self-mute"
         others_disabled: "Muting others is disabled"
 
   jrrp:
     description: "Daily Luck"
     usage: |-
-      Send command to check your daily luck
+      Check your daily luck, supports specified date
     examples: |-
-      jrrp
       jrrp -d 1970-01-01
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
-      result: "{1} Your luck value today is: {0}"
+      result: "{1} Your luck today is: {0}"
       prompt: "Would you like to check your luck today?"
       cancel: "Alright, have a nice day!"
-      error: "Error calculating luck, please try again later"
+      error: "Error calculating daily luck"
       range:
-        1: "...(out of 100)"
+        1: "...(on a scale of 100)"
         2: "?! No way..."
         3: ". Ugh..."
         4: "! Barely acceptable...?"
         5: ". Not bad, not bad."
         6: ". Pretty lucky today!"
-        7: "! Outstanding!"
+        7: "! Excellent!"
         8: "! Almost perfect..."
         9: "Spare"
         10: "Spare"
       special:
         1: "! Terrible luck!"
-        2: "! Perfectly balanced..."
+        2: "! 50-50..."
         3: "! 100! 100!!!!"
         4: "Spare"
         5: "Spare"
@@ -158,18 +153,13 @@ commands:
         10: "Spare"
 
 errors:
-  invalid_session: "Invalid session information"
+  invalid_session: "Invalid session"
   invalid_time: "Invalid time format"
   invalid_date: "Invalid date format"
-  operation:
-    operation_cancelled: "Operation cancelled"
-    member_info_failed: "Failed to get member information"
-    permission_denied: "Permission denied"
-    internal_error: "Internal error, please try again later"
-  like_failed: "Like operation failed"
+  like_failed: "Like failed"
   config:
     invalid_range: "Invalid range format: {0}"
-    range_not_covered: "Ranges must cover from 0 to 100"
-    range_overlap: "Gap or overlap detected between ranges {0} and {1}"
+    range_not_covered: "Range must fully cover 0 to 100"
+    range_overlap: "Overlap or gap between ranges {0} and {1}"
     invalid_autolike_time: "Invalid auto-like time format"
-    invalid_sleep_time: "Invalid sleep until time format"
+    invalid_sleep_time: "Invalid sleep end time format"

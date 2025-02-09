@@ -438,7 +438,6 @@ export async function apply(ctx: Context, config: Config) {
           ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60)
           : config.mute.duration * 60
 
-      try {
         // 随机禁言
         if (options?.r) {
           const members = (await session.onebot.getGroupMemberList(session.guildId))
@@ -491,10 +490,6 @@ export async function apply(ctx: Context, config: Config) {
         // 自我禁言
         await handleMute(session, session.userId, muteDuration, false)
         await sendMuteResultMessage(session, session.userId, muteDuration)
-      } catch (error) {
-        const message = await session.send(session.text(`commands.mute.messages.errors.${error.message}`))
-        await autoRecallMessage(session, message)
-      }
     })
 
   // 修改 jrrp 命令的错误处理
