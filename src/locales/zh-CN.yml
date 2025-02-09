@@ -94,13 +94,18 @@ commands:
       mute -u [User]
       mute -r
     messages:
-      guild_only: "此功能仅限群聊使用"
-      self_success: "已将你禁言{0}分钟{1}秒"
-      target_success: "已将{0}禁言{1}分钟{2}秒"
-      target_failed: "禁言失败，请检查权限或重试"
-      probability_failed_self: "禁言失败，已将你禁言{0}分钟{1}秒"
-      mute_others_disabled: "已禁用禁言他人功能"
-      target_is_admin: "无法禁言管理员"
+      errors:
+        guild_only: "此功能仅限群聊使用"
+        no_valid_members: "没有可用的成员可供禁言"
+        target_not_found: "找不到指定的用户"
+        target_is_admin: "无法禁言管理员"
+        target_failed: "禁言失败，请检查权限或重试"
+        no_permission: "机器人没有足够的权限执行禁言操作"
+      notify:
+        self_muted: "已将你禁言{0}分钟{1}秒"
+        target_muted: "已将{0}禁言{1}分钟{2}秒"
+        probability_failed: "概率检定失败，执行自我禁言"
+        others_disabled: "已禁用禁言他人功能"
 
   jrrp:
     description: "今日人品"
@@ -154,9 +159,12 @@ errors:
   invalid_session: "无效的会话信息"
   invalid_time: "无效的时间格式"
   invalid_date: "无效的日期格式"
-  invalid_duration: "无效的时间范围"
-  plugin_load_failed: "插件加载失败"
-  message_send_failed: "消息发送失败"
+  operation:
+    message_recall_failed: "消息撤回失败"
+    operation_cancelled: "操作已取消"
+    member_info_failed: "获取成员信息失败"
+    permission_denied: "权限不足，无法执行该操作"
+    internal_error: "内部错误，请稍后再试"
   like_failed: "点赞失败"
   config:
     invalid_range: "区间格式无效：{0}"

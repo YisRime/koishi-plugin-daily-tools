@@ -94,13 +94,18 @@ commands:
       mute -u [User]
       mute -r
     messages:
-      guild_only: "This feature is only available in group chats"
-      self_success: "You have been muted for {0} minutes {1} seconds"
-      target_success: "{0} has been muted for {1} minutes {2} seconds"
-      target_failed: "Mute failed, please check permissions or try again"
-      probability_failed_self: "Target mute failed, you've been muted for {0} minutes {1} seconds"
-      mute_others_disabled: "Muting others is disabled"
-      target_is_admin: "Cannot mute administrators"
+      errors:
+        guild_only: "This feature is only available in group chats"
+        no_valid_members: "No valid members available to mute"
+        target_not_found: "Target user not found"
+        target_is_admin: "Cannot mute administrators"
+        target_failed: "Mute operation failed, check permissions and try again"
+        no_permission: "Bot doesn't have sufficient permissions to mute"
+      notify:
+        self_muted: "You have been muted for {0} minutes {1} seconds"
+        target_muted: "{0} has been muted for {1} minutes {2} seconds"
+        probability_failed: "Probability check failed, executing self-mute"
+        others_disabled: "Muting others is disabled"
 
   jrrp:
     description: "Daily Luck"
@@ -154,9 +159,12 @@ errors:
   invalid_session: "Invalid session information"
   invalid_time: "Invalid time format"
   invalid_date: "Invalid date format"
-  invalid_duration: "Invalid duration"
-  plugin_load_failed: "Plugin loading failed"
-  message_send_failed: "Message sending failed"
+  operation:
+    message_recall_failed: "Failed to recall message"
+    operation_cancelled: "Operation cancelled"
+    member_info_failed: "Failed to get member information"
+    permission_denied: "Permission denied"
+    internal_error: "Internal error, please try again later"
   like_failed: "Like operation failed"
   config:
     invalid_range: "Invalid range format: {0}"
