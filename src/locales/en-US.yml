@@ -5,7 +5,7 @@ sleepconfig:
       $desc: "Mute Mode"
       $inner:
         - "Fixed Duration"
-        - "Specified Time"
+        - "Until Specific Time"
         - "Random Duration"
     duration: "Mute Duration (minutes)"
     until: "Mute End Time (HH:MM)"
@@ -13,22 +13,22 @@ sleepconfig:
     max: "Maximum Mute Duration (minutes)"
 
 autolikeconfig:
-  $desc: "Auto-Like Configuration"
+  $desc: "Auto-like Configuration"
   autoLikeList:
-    $desc: "Auto-Like Targets"
+    $desc: "Auto-like Targets"
     $inner: "Target QQ Numbers"
   autoLikeTime:
     $desc: "Scheduled Like Time (HH:MM)"
     $inner: "Daily Like Time (HH:MM)"
   notifyAccount:
     $desc: "Admin Account"
-    $inner: "For receiving like notifications and as like reciprocity target"
+    $inner: "For receiving like notifications and as like return target"
   enableLikeReminder:
-    $desc: "Enable Like Reminder"
-    $inner: "When enabled, reminds users to like the master after completion"
+    $desc: "Enable Owner Like Reminder"
+    $inner: "When enabled, reminds to like the owner after completion"
 
 jrrpconfig:
-  $desc: "Daily Fortune Configuration"
+  $desc: "Daily Luck Configuration"
   choice:
     $desc: "Algorithm Selection"
     $inner:
@@ -36,14 +36,14 @@ jrrpconfig:
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
   rangeMessages:
-    $desc: "Fortune Range Settings (max 10)"
-    $inner: "Set prompts for different ranges"
+    $desc: "Luck Range Messages (max 10)"
+    $inner: "Set messages for different ranges"
   specialMessages:
     $desc: "Special Value Messages (max 10)"
-    $inner: "Set prompts for specific values"
+    $inner: "Set messages for specific values"
   holidayMessages:
     $desc: "Holiday Messages (max 10)"
-    $inner: "Set prompts for specific dates"
+    $inner: "Set messages for specific dates"
 
 muteconfig:
   $desc: "Random Mute Configuration"
@@ -57,15 +57,15 @@ muteconfig:
     minDuration: "Minimum Mute Duration (minutes)"
     maxDuration: "Maximum Mute Duration (minutes)"
     enableMuteOthers: "Allow Muting Others"
-    probability: "Success Probability for Muting Others"
-    enableMessage: "Enable Mute Notification Message"
+    probability: "Probability of Muting Others"
+    enableMessage: "Enable Mute Notification Messages"
 
 commands:
   sleep:
     description: "Sleep Mode"
     usage: |-
-      Automatically mute for specified duration
-      Supports three modes: Fixed Duration, Specified Time, Random Duration
+      Automatically mutes for specified duration
+      Supports three modes: Fixed Duration, Until Specific Time, Random Duration
     examples: |-
       sleep
     messages:
@@ -74,90 +74,87 @@ commands:
       failed: "Sleep mode failed, please check bot permissions"
 
   zanwo:
-    description: "Auto-Like"
-    usage: "Send command to receive likes from the bot (max 50 likes)"
+    description: "Auto-like Feature"
+    usage: "Send command to receive likes from bot (max 50 likes)"
     examples: |-
       zanwo
       likeme
     messages:
-      success: "Likes sent, remember to like my master ({0}) back~"
+      success: "Likes sent, remember to like my owner ({0})"
       success_no_reminder: "Likes sent successfully"
-      failure: "Like failed, please try again later"
 
   mute:
     description: "Mute Self or Others"
     usage: |-
-      Mutes yourself by default
-      -u @user Probability-based mute for specified user
-      -r Probability-based mute for random user
-      Parameters: [duration] Specify mute duration (minutes)
+      -u Mute specific user
+      -r Mute random user
+      [duration] Specify mute duration (minutes)
     examples: |-
-      mute
-      mute 5
-      mute -u @user
+      mute [5]
+      mute -u [User]
       mute -r
     messages:
       guild_only: "This feature is only available in group chats"
       self_success: "You have been muted for {0} minutes {1} seconds"
       target_success: "{0} has been muted for {1} minutes {2} seconds"
       target_failed: "Mute failed, please check permissions or try again"
-      probability_failed_self: "Mute failed, you have been muted for {0} minutes {1} seconds"
-      failed: "Operation failed, please check permissions"
+      probability_failed_self: "Target mute failed, you've been muted for {0} minutes {1} seconds"
       mute_others_disabled: "Muting others is disabled"
+      target_is_admin: "Cannot mute administrators"
 
   jrrp:
-    description: "Daily Fortune"
+    description: "Daily Luck"
     usage: |-
-      Send command to check your fortune value for today
+      Send command to check your daily luck
     examples: |-
       jrrp
       jrrp -d 1970-01-01
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
-      result: "{1} Your fortune value today is: {0}"
-      prompt: "Would you like to see your fortune for today?"
+      result: "{1} Your luck value today is: {0}"
+      prompt: "Would you like to check your luck today?"
       cancel: "Alright, have a nice day!"
-      error: "An error occurred, please try again"
+      error: "Error calculating luck, please try again later"
       range:
-        1: "...(on a scale of 100)"
+        1: "...(out of 100)"
         2: "?! No way..."
         3: ". Ugh..."
         4: "! Barely acceptable...?"
         5: ". Not bad, not bad."
-        6: ". Pretty good luck today!"
+        6: ". Pretty lucky today!"
         7: "! Outstanding!"
         8: "! Almost perfect..."
-        9: "Reserved"
-        10: "Reserved"
+        9: "Spare"
+        10: "Spare"
       special:
         1: "! Terrible luck!"
         2: "! Perfectly balanced..."
         3: "! 100! 100!!!!"
-        4: "Reserved"
-        5: "Reserved"
-        6: "Reserved"
-        7: "Reserved"
-        8: "Reserved"
-        9: "Reserved"
-        10: "Reserved"
+        4: "Spare"
+        5: "Spare"
+        6: "Spare"
+        7: "Spare"
+        8: "Spare"
+        9: "Spare"
+        10: "Spare"
       date:
         1: "Happy New Year!"
         2: "Merry Christmas!"
-        3: "Reserved"
-        4: "Reserved"
-        5: "Reserved"
-        6: "Reserved"
-        7: "Reserved"
-        8: "Reserved"
-        9: "Reserved"
-        10: "Reserved"
+        3: "Spare"
+        4: "Spare"
+        5: "Spare"
+        6: "Spare"
+        7: "Spare"
+        8: "Spare"
+        9: "Spare"
+        10: "Spare"
 
 errors:
   invalid_session: "Invalid session information"
   invalid_time: "Invalid time format"
   invalid_date: "Invalid date format"
-  invalid_duration: "Invalid duration range"
-  plugin_load_failed: "Plugin failed to load"
-  message_send_failed: "Message failed to send"
+  invalid_duration: "Invalid time duration"
+  plugin_load_failed: "Plugin loading failed"
+  message_send_failed: "Message sending failed"
   like_failed: "Like operation failed"

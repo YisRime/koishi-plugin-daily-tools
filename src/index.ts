@@ -133,58 +133,108 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 ])
 
+// 添加配置验证函数
+const validateConfig = (config: Config): boolean => {
+  if (config.autoLikeTime && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(config.autoLikeTime)) {
+    console.error('Invalid autoLikeTime format');
+    return false;
+  }
+
+  if (config.sleep.type === SleepMode.UNTIL &&
+      !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(config.sleep.until)) {
+    console.error('Invalid sleep until time format');
+    return false;
+  }
+
+  return true;
+};
+
 export async function apply(ctx: Context, config: Config) {
+  // 配置验证
+  if (!validateConfig(config)) {
+    throw new Error('Invalid configuration');
+  }
+
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
-  // 通用函数
-  const handleMute = async (session, targetId: string, duration: number, showMessage = true) => {
-    try {
-      await session.onebot.setGroupBan(session.guildId, targetId, duration);
-      if (!showMessage || !config.mute.enableMessage) return null;
-
-      const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
-      const params = [await getUserName(session, targetId), minutes, seconds].filter(Boolean);
-      return session.text(
-        targetId === session.userId
-          ? 'commands.mute.messages.self_success'
-          : 'commands.mute.messages.target_success',
-        params
-      );
-    } catch (error) {
-      console.error(`Mute failed for ${targetId}:`, error);
-      return session.text('commands.mute.messages.failed');
+  // 添加通用的消息撤回函数
+  const autoRecallMessage = async (session, message, delay = 10000) => {
+    if (message) {
+      setTimeout(async () => {
+        try {
+          const messageId = Array.isArray(message) ? message[0] : message;
+          await session.bot.deleteMessage(session.channelId, messageId);
+        } catch (error) {
+          console.error('Failed to recall message:', error);
+        }
+      }, delay);
     }
   };
 
+  const userCache = new Map<string, string>();
+
+  // 优化获取用户名函数
   const getUserName = async (session, userId: string) => {
+    const cacheKey = `${session.platform}:${userId}`;
+    if (userCache.has(cacheKey)) {
+      return userCache.get(cacheKey);
+    }
+
     try {
       const user = await ctx.database.getUser(session.platform, userId);
-      return user?.name || userId;
+      const name = user?.name || userId;
+      userCache.set(cacheKey, name);
+      return name;
     } catch {
       return userId;
     }
   };
 
-  // 命令注册
+  // 通用函数
+  const handleMute = async (session, targetId: string, duration: number, showMessage = true) => {
+    try {
+      const memberInfo = await session.onebot.getGroupMemberInfo(session.guildId, targetId, true)
+        .catch(() => null);
+
+      if (!memberInfo) {
+        return session.text('commands.mute.messages.target_failed');
+      }
+
+      if (memberInfo.role === 'owner' || memberInfo.role === 'admin') {
+        return session.text('commands.mute.messages.target_is_admin');
+      }
+
+      // 先执行禁言
+      await session.onebot.setGroupBan(session.guildId, targetId, duration);
+
+      // 禁言成功后再发送消息
+      if (!showMessage || !config.mute.enableMessage) return null;
+
+      const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
+      const message = await session.send(session.text(
+        targetId === session.userId
+          ? 'commands.mute.messages.self_success'
+          : 'commands.mute.messages.target_success',
+        [await getUserName(session, targetId), minutes, seconds].filter(Boolean)
+      ));
+
+      await autoRecallMessage(session, message);
+      return null;
+    } catch (error) {
+      console.error(`Mute operation failed for ${targetId}:`, error);
+      return session.text('commands.mute.messages.target_failed');
+    }
+  };
+
+  // 修改 sleep 命令的错误处理
   ctx.command('sleep')
     .alias('jzsm', '精致睡眠')
     .action(async ({ session }) => {
       try {
         if (!session?.guildId) {
-          const message = await session.send(session.text('commands.sleep.messages.guild_only'))
-            .catch(() => null);
-
-          if (message) {
-            setTimeout(async () => {
-              try {
-                const messageId = Array.isArray(message) ? message[0] : message;
-                await session.bot.deleteMessage(session.channelId, messageId);
-              } catch (error) {
-                console.error('Message recall failed:', error);
-              }
-            }, 5000);
-          }
+          const message = await session.send(session.text('commands.sleep.messages.guild_only'));
+          await autoRecallMessage(session, message);
           return;
         }
 
@@ -216,15 +266,20 @@ export async function apply(ctx: Context, config: Config) {
         await session.bot.muteGuildMember(session.guildId, session.userId, duration * 60 * 1000);
         return session.text('commands.sleep.messages.success');
       } catch (error) {
-        return session.text('commands.sleep.messages.failed');
+        const message = await session.send(session.text('commands.sleep.messages.failed'));
+        await autoRecallMessage(session, message);
+        return;
       }
     });
 
+  // 优化 zanwo 命令，使用 Promise.all 并行处理
   ctx.command('zanwo')
     .alias('赞我')
     .action(async ({ session }) => {
       if (!session?.userId) {
-        return session.text('errors.invalid_session');
+        const message = await session.send(session.text('errors.invalid_session'));
+        await autoRecallMessage(session, message);
+        return;
       }
 
       let successfulLikes = 0;
@@ -232,20 +287,32 @@ export async function apply(ctx: Context, config: Config) {
 
       for (let retry = 0; retry < maxRetries; retry++) {
         try {
-          for (let i = 0; i < 5; i++) {
-            await session.bot.internal.sendLike(session.userId, 10);
-            successfulLikes += 1;
-          }
-          return config.enableLikeReminder
-            ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
-            : session.text('commands.zanwo.messages.success_no_reminder');
+          // 并行发送5个点赞请求
+          await Promise.all(Array(5).fill(null).map(() =>
+            session.bot.internal.sendLike(session.userId, 10)
+          ));
+          successfulLikes = 5;
+
+          const message = await session.send(
+            config.enableLikeReminder
+              ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
+              : session.text('commands.zanwo.messages.success_no_reminder')
+          );
+
+          await autoRecallMessage(session, message);
+          return null;
         } catch (error) {
           if (retry === maxRetries - 1) {
-            return successfulLikes > 0
-              ? (config.enableLikeReminder
-                ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
-                : session.text('commands.zanwo.messages.success_no_reminder'))
-              : session.text('errors.like_failed');
+            const errorMessage = await session.send(
+              successfulLikes > 0
+                ? (config.enableLikeReminder
+                  ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
+                  : session.text('commands.zanwo.messages.success_no_reminder'))
+                : session.text('errors.like_failed')
+            );
+
+            await autoRecallMessage(session, errorMessage);
+            return null;
           }
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
@@ -257,58 +324,66 @@ export async function apply(ctx: Context, config: Config) {
     try {
       const [hour, minute] = config.autoLikeTime.split(':').map(Number);
       if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-        throw new Error('无效的时间格式');
+        throw new Error('Invalid time format');
       }
 
       ctx.cron(`0 ${minute} ${hour} * * *`, async () => {
-        const results = [];
-
-        for (const userId of config.autoLikeList) {
+        const results = await Promise.all(config.autoLikeList.map(async (userId) => {
           let retryCount = 0;
           const maxRetries = 3;
 
           while (retryCount < maxRetries) {
             try {
-              for (let i = 0; i < 5; i++) {
-                await ctx.bots.first?.internal.sendLike(userId, 10);
-              }
-              results.push(`用户 ${userId} 点赞成功`);
-              break;
+              await Promise.all(Array(5).fill(null).map(() =>
+                ctx.bots.first?.internal.sendLike(userId, 10)
+              ));
+              return `User ${userId} like succeeded`;
             } catch (error) {
               retryCount++;
               if (retryCount === maxRetries) {
-                results.push(`用户 ${userId} 点赞失败: ${error.message}`);
+                return `User ${userId} like failed: ${error.message}`;
               }
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
           }
-        }
+        }));
 
         if (config.notifyAccount) {
           try {
             const resultMessage = results.join('\n');
             await ctx.bots.first?.sendPrivateMessage(config.notifyAccount, resultMessage);
           } catch (error) {
-            console.error('发送通知消息失败:', error);
+            console.error('Failed to send notification:', error);
           }
         }
       });
     } catch (error) {
-      console.error('自动点赞任务注册失败:', error);
+      console.error('Auto-like task registration failed:', error);
     }
   }
 
-  // 精简后的mute命令
+  // 修改 mute 命令的错误处理
   ctx.command('mute [duration:number]')
-    .option('u', '-u <target:text>')  // 改为text类型
+    .option('u', '-u <target:text>')
     .option('r', '-r')
     .action(async ({ session, options }, duration) => {
+      // 先尝试撤回命令消息
+      try {
+        await session.bot.deleteMessage(session.channelId, session.messageId);
+      } catch (error) {
+        console.error('Failed to delete mute command message:', error);
+      }
+
       if (!session?.guildId) {
-        return session.text('commands.mute.messages.guild_only');
+        const message = await session.send(session.text('commands.mute.messages.guild_only'));
+        await autoRecallMessage(session, message);
+        return;
       }
 
       if (!config.mute.enableMuteOthers && (options?.u || options?.r)) {
-        return session.text('commands.mute.messages.mute_others_disabled');
+        const message = await session.send(session.text('commands.mute.messages.mute_others_disabled'));
+        await autoRecallMessage(session, message);
+        return;
       }
 
       const random = new Random();
@@ -317,55 +392,82 @@ export async function apply(ctx: Context, config: Config) {
           ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60)
           : config.mute.duration * 60;
 
-      // 处理随机禁言
-      if (options?.r) {
-        try {
-          const members = (await session.onebot.getGroupMemberList(session.guildId))
-            .map(m => m.user_id.toString())
-            .filter(id => id !== session.selfId && id !== session.userId);
+      // 处理选项逻辑
+      if (options?.r || options?.u) {
+        // 如果已经禁用了禁言他人功能，这里就不会执行到了
+        if (options.r) {
+          try {
+            const members = (await session.onebot.getGroupMemberList(session.guildId))
+              .map(m => m.user_id.toString())
+              .filter(id => id !== session.selfId && id !== session.userId);
 
-          if (!members.length) return session.text('commands.mute.messages.failed');
+            if (!members.length) {
+              const message = await session.send(session.text('commands.mute.messages.failed'));
+              await autoRecallMessage(session, message);
+              return;
+            }
 
-          return random.bool(config.mute.probability)
-            ? handleMute(session, random.pick(members), muteDuration)
-            : handleMute(session, session.userId, muteDuration);
-        } catch {
-          return session.text('commands.mute.messages.failed');
+            // 随机失败则改为禁言自己
+            if (!random.bool(config.mute.probability)) {
+              // 只在启用消息提示时发送失败消息
+              if (config.mute.enableMessage) {
+                const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
+                await autoRecallMessage(session, message);
+              }
+              return handleMute(session, session.userId, muteDuration);
+            }
+            return handleMute(session, random.pick(members), muteDuration);
+          } catch {
+            const message = await session.send(session.text('commands.mute.messages.failed'));
+            await autoRecallMessage(session, message);
+            return;
+          }
+        } else {
+          const parsedUser = h.parse(options.u)[0];
+          const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
+
+          if (!targetId) {
+            const message = await session.send(session.text('commands.mute.messages.target_failed'));
+            await autoRecallMessage(session, message);
+            return;
+          }
+
+          // 指定用户禁言失败则改为禁言自己
+          if (!random.bool(config.mute.probability)) {
+            // 只在启用消息提示时发送失败消息
+            if (config.mute.enableMessage) {
+              const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
+              await autoRecallMessage(session, message);
+            }
+            return handleMute(session, session.userId, muteDuration);
+          }
+          return handleMute(session, targetId, muteDuration);
         }
-      }
-
-      // 处理指定禁言
-      if (options?.u) {
-        const parsedUser = h.parse(options.u)[0];
-        // 支持at和直接输入QQ号两种方式
-        const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
-
-        if (!targetId) {
-          return session.text('commands.mute.messages.target_failed');
-        }
-
-        return random.bool(config.mute.probability)
-          ? handleMute(session, targetId, muteDuration)
-          : handleMute(session, session.userId, muteDuration);
       }
 
       // 禁言自己
       return handleMute(session, session.userId, muteDuration);
     });
 
-  // 注册今日人品命令
+  // 修改 jrrp 命令的错误处理
   ctx.command('jrrp')
     .option('d', '-d <date>', { type: 'string' })
     .action(async ({ session, options }) => {
       try {
         if (!session?.userId) {
-          throw new Error(session.text('errors.invalid_session'));
+          const message = await session.send(session.text('errors.invalid_session'));
+          await autoRecallMessage(session, message);
+          return;
         }
 
         let targetDate = new Date();
         if (options?.d) {
           const date = parseDate(options.d, targetDate);
-          if (!date) throw new Error(session.text('errors.invalid_date'));
+          if (!date) {
+            const message = await session.send(session.text('errors.invalid_date'));
+            await autoRecallMessage(session, message);
+            return;
+          }
           targetDate = date;
         }
 
@@ -460,8 +562,10 @@ export async function apply(ctx: Context, config: Config) {
         }
         return message
       } catch (error) {
-        console.error('今日人品计算失败:', error);
-        return session.text('commands.jrrp.messages.error');
+        console.error('Daily fortune calculation failed:', error);
+        const message = await session.send(session.text('commands.jrrp.messages.error'));
+        await autoRecallMessage(session, message);
+        return;
       }
     });
 

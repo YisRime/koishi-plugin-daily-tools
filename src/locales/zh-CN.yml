@@ -82,7 +82,6 @@ commands:
     messages:
       success: "点赞完成，记得赞我主人({0})哦~"
       success_no_reminder: "点赞完成"
-      failure: "点赞失败，请稍后重试"
 
   mute:
     description: "禁言自己或他人"
@@ -100,8 +99,8 @@ commands:
       target_success: "已将{0}禁言{1}分钟{2}秒"
       target_failed: "禁言失败，请检查权限或重试"
       probability_failed_self: "禁言失败，已将你禁言{0}分钟{1}秒"
-      failed: "操作失败，请检查权限"
       mute_others_disabled: "已禁用禁言他人功能"
+      target_is_admin: "无法禁言管理员"
 
   jrrp:
     description: "今日人品"
@@ -116,7 +115,7 @@ commands:
       result: "{1} 你今天的人品值是：{0}"
       prompt: "你要看看今天的人品吗？"
       cancel: "好的，祝您今天愉快！"
-      error: "发生错误，请重试"
+      error: "计算今日人品时出错了，请稍后再试"
       range:
         1: "……（是百分制哦）"
         2: "？！不会吧……"
