@@ -56,6 +56,7 @@ muteconfig:
     duration: "固定禁言时长（分钟）"
     minDuration: "最小禁言时长（分钟）"
     maxDuration: "最大禁言时长（分钟）"
+    maxAllowedDuration: "最大允许禁言时长（分钟）"
     enableMuteOthers: "是否允许禁言他人"
     probability: "禁言他人成功概率"
     enableMessage: "是否启用禁言提示消息"
@@ -101,6 +102,7 @@ commands:
         target_is_admin: "无法禁言管理员"
         target_failed: "禁言失败，请检查权限或重试"
         no_permission: "机器人没有足够的权限执行禁言操作"
+        duration_too_long: "禁言时长超过上限（{0}分钟），操作已取消"
       notify:
         self_muted: "已将你禁言{0}分钟{1}秒"
         target_muted: "已将{0}禁言{1}分钟{2}秒"
@@ -160,7 +162,6 @@ errors:
   invalid_time: "无效的时间格式"
   invalid_date: "无效的日期格式"
   operation:
-    message_recall_failed: "消息撤回失败"
     operation_cancelled: "操作已取消"
     member_info_failed: "获取成员信息失败"
     permission_denied: "权限不足，无法执行该操作"

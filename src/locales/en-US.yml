@@ -56,6 +56,7 @@ muteconfig:
     duration: "Fixed Mute Duration (minutes)"
     minDuration: "Minimum Mute Duration (minutes)"
     maxDuration: "Maximum Mute Duration (minutes)"
+    maxAllowedDuration: "Maximum Allowed Mute Duration (minutes)"
     enableMuteOthers: "Allow Muting Others"
     probability: "Probability of Muting Others"
     enableMessage: "Enable Mute Notification Messages"
@@ -101,6 +102,7 @@ commands:
         target_is_admin: "Cannot mute administrators"
         target_failed: "Mute operation failed, check permissions and try again"
         no_permission: "Bot doesn't have sufficient permissions to mute"
+        duration_too_long: "Mute duration exceeds limit ({0} minutes), operation cancelled"
       notify:
         self_muted: "You have been muted for {0} minutes {1} seconds"
         target_muted: "{0} has been muted for {1} minutes {2} seconds"
@@ -160,7 +162,6 @@ errors:
   invalid_time: "Invalid time format"
   invalid_date: "Invalid date format"
   operation:
-    message_recall_failed: "Failed to recall message"
     operation_cancelled: "Operation cancelled"
     member_info_failed: "Failed to get member information"
     permission_denied: "Permission denied"

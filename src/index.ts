@@ -49,6 +49,7 @@ export interface Config {
     duration: number
     minDuration: number
     maxDuration: number
+    maxAllowedDuration: number // 新增：最大允许禁言时长
     probability: number
     enableMessage: boolean
     enableMuteOthers: boolean
@@ -93,6 +94,7 @@ export const Config: Schema<Config> = Schema.intersect([
       duration: Schema.number().default(5),
       minDuration: Schema.number().default(0.1),
       maxDuration: Schema.number().default(10),
+      maxAllowedDuration: Schema.number().default(1440), // 新增：默认24小时
       enableMessage: Schema.boolean().default(false),
       enableMuteOthers: Schema.boolean().default(true),
       probability: Schema.number().default(0.5).min(0).max(1),
@@ -196,16 +198,19 @@ export async function apply(ctx: Context, config: Config) {
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
-  // 添加通用的消息撤回函数
+  // 简化的消息撤回函数
   const autoRecallMessage = async (session, message, delay = 10000) => {
     if (message) {
       setTimeout(async () => {
-        try {
-          const messageId = Array.isArray(message) ? message[0] : message;
-          await session.bot.deleteMessage(session.channelId, messageId);
-        } catch (error) {
-          console.error('Failed to recall message:', error);
-        }
+          if (Array.isArray(message)) {
+            for (const msg of message) {
+              if (msg?.id) {
+                await session.bot.deleteMessage(session.channelId, msg.id);
+              }
+            }
+          } else if (message?.id) {
+            await session.bot.deleteMessage(session.channelId, message.id);
+          }
       }, delay);
     }
   };
@@ -419,9 +424,16 @@ export async function apply(ctx: Context, config: Config) {
         return
       }
 
+      // 如果用户指定了时长，检查是否超过最大允许时长
+      if (duration && duration > config.mute.maxAllowedDuration) {
+        const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.mute.maxAllowedDuration]))
+        await autoRecallMessage(session, message)
+        return
+      }
+
       // 计算禁言时长
-      const random = new Random()
-      const muteDuration = duration ? duration * 60
+      let random = new Random()
+      let muteDuration = duration ? duration * 60
         : config.mute.type === MuteDurationType.RANDOM
           ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60)
           : config.mute.duration * 60
