@@ -1,33 +1,35 @@
+// 导入必要的依赖
 import { Context, Schema, Random, h } from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
 import * as cron from 'koishi-plugin-cron'
 
+// 插件基本信息
 export const name = 'daily-tools'
 export const inject = {
   required: ['database'],
   optional: ['cron']
 }
 
-// 定义不同的随机数生成算法，用于计算今日人品值
+// 今日人品计算的不同算法实现
 export const enum JrrpAlgorithm {
-  BASIC = 'basic',      // 基础哈希算法: 使用简单的哈希取模运算
-  GAUSSIAN = 'gaussian', // 高斯分布算法: 生成近似正态分布的随机数
-  LINEAR = 'linear'     // 线性同余算法: 使用线性同余方法生成伪随机数
+  BASIC = 'basic',      // 基于简单哈希的随机算法
+  GAUSSIAN = 'gaussian', // 基于正态分布的随机算法
+  LINEAR = 'linear'     // 基于线性同余的随机算法
 }
 
-// 定义不同的睡眠时长计算方式
+// 睡眠模式选项
 export const enum SleepMode {
-  STATIC = 'static',  // 静态模式: 固定时长
-  UNTIL = 'until',    // 定时模式: 睡到指定时间
-  RANDOM = 'random'   // 随机模式: 在指定范围内随机时长
+  STATIC = 'static',
+  UNTIL = 'until',
+  RANDOM = 'random'
 }
 
+// 禁言时长类型
 export const enum MuteDurationType {
-  STATIC = 'static',  // 固定时长
-  RANDOM = 'random'   // 随机时长
+  STATIC = 'static',
+  RANDOM = 'random'
 }
 
-// 修改配置接口定义
 export interface Config {
   sleep: {
     type: SleepMode
@@ -39,7 +41,7 @@ export interface Config {
   autoLikeList?: string[]
   autoLikeTime?: string
   notifyAccount?: string
-  enableLikeReminder?: boolean // 添加是否提示赞主人的选项
+  enableLikeReminder?: boolean
   choice?: JrrpAlgorithm
   specialMessages?: Record<number, string>
   rangeMessages?: Record<string, string>
@@ -49,14 +51,13 @@ export interface Config {
     duration: number
     minDuration: number
     maxDuration: number
-    maxAllowedDuration: number // 新增：最大允许禁言时长
+    maxAllowedDuration: number
     probability: number
     enableMessage: boolean
     enableMuteOthers: boolean
   }
 }
 
-// 更新配置模式定义
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     sleep: Schema.object({
@@ -94,7 +95,7 @@ export const Config: Schema<Config> = Schema.intersect([
       duration: Schema.number().default(5),
       minDuration: Schema.number().default(0.1),
       maxDuration: Schema.number().default(10),
-      maxAllowedDuration: Schema.number().default(1440), // 新增：默认24小时
+      maxAllowedDuration: Schema.number().default(1440),
       enableMessage: Schema.boolean().default(false),
       enableMuteOthers: Schema.boolean().default(true),
       probability: Schema.number().default(0.5).min(0).max(1),
@@ -135,11 +136,10 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 ])
 
-// 修改区间检查辅助函数
+// 配置验证相关函数
 const validateRangeMessages = (ctx: Context, rangeMessages: Record<string, string>): boolean => {
   const ranges: [number, number][] = [];
 
-  // 解析所有区间
   for (const range of Object.keys(rangeMessages)) {
     const [start, end] = range.split('-').map(Number);
     if (isNaN(start) || isNaN(end) || start > end || start < 0 || end > 100) {
@@ -149,16 +149,13 @@ const validateRangeMessages = (ctx: Context, rangeMessages: Record<string, strin
     ranges.push([start, end]);
   }
 
-  // 按起始位置排序
   ranges.sort((a, b) => a[0] - b[0]);
 
-  // 检查是否覆盖 0-100
   if (ranges[0][0] !== 0 || ranges[ranges.length - 1][1] !== 100) {
     ctx.logger.warn(ctx.i18n.define('errors.config.range_not_covered', {}));
     return false;
   }
 
-  // 检查区间是否连续且不重反
   for (let i = 1; i < ranges.length; i++) {
     if (ranges[i][0] !== ranges[i-1][1] + 1) {
       ctx.logger.warn(ctx.i18n.define('errors.config.range_overlap', { prev: String(ranges[i-1][1]), curr: String(ranges[i][0]) }));
@@ -169,7 +166,7 @@ const validateRangeMessages = (ctx: Context, rangeMessages: Record<string, strin
   return true;
 };
 
-// 修改配置验证函数
+// 配置整体验证函数
 const validateConfig = (ctx: Context, config: Config): boolean => {
   if (config.autoLikeTime && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(config.autoLikeTime)) {
     ctx.logger.warn(ctx.i18n.define('errors.config.invalid_autolike_time', {}));
@@ -190,7 +187,6 @@ const validateConfig = (ctx: Context, config: Config): boolean => {
 };
 
 export async function apply(ctx: Context, config: Config) {
-  // 配置验证
   if (!validateConfig(ctx, config)) {
     throw new Error('Invalid configuration');
   }
@@ -198,11 +194,10 @@ export async function apply(ctx: Context, config: Config) {
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
-  // 简化的消息撤回函数
+  // 消息自动撤回处理
   const autoRecallMessage = async (session, message, delay = 10000) => {
     if (message) {
       setTimeout(() => {
-        try {
           if (Array.isArray(message)) {
             for (const msg of message) {
               if (msg?.id) {
@@ -212,16 +207,14 @@ export async function apply(ctx: Context, config: Config) {
           } else if (message?.id) {
             session.bot.deleteMessage(session.channelId, message.id);
           }
-        } catch {
-          // 忽略撤回失败的错误
-        }
       }, delay);
     }
   };
 
+  // 用户名称缓存管理
   const userCache = new Map<string, string>();
 
-  // 优化获取用户名函数
+  // 获取用户显示名称(支持缓存)
   const getUserName = async (session, userId: string) => {
     const cacheKey = `${session.platform}:${userId}`;
     if (userCache.has(cacheKey)) {
@@ -233,14 +226,20 @@ export async function apply(ctx: Context, config: Config) {
     return name;
   };
 
-  // 修改错误消息映射
+  // 禁言操作核心处理函数
   const handleMute = async (session, targetId: string, duration: number) => {
     await session.onebot.setGroupBan(session.guildId, targetId, duration)
-    await session.bot.deleteMessage(session.channelId, session.messageId)
+    if (session.messageId) {
+      try {
+        await session.bot.deleteMessage(session.channelId, session.messageId)
+      } catch {
+        // 忽略撤回失败
+      }
+    }
     return true
   }
 
-  // 修改禁言结果消息
+  // 发送禁言结果通知
   const sendMuteResultMessage = async (session, targetId: string, duration: number, showMessage = true) => {
     if (showMessage && config.mute.enableMessage) {
       const [minutes, seconds] = [(duration / 60) | 0, duration % 60]
@@ -254,7 +253,7 @@ export async function apply(ctx: Context, config: Config) {
     }
   }
 
-  // 修改 sleep 命令的错误处理
+  // 精致睡眠命令 - 支持多种睡眠模式
   ctx.command('sleep')
     .alias('jzsm', '精致睡眠')
     .action(async ({ session }) => {
@@ -299,7 +298,7 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 优化 zanwo 命令，使用 Promise.all 并行处理
+  // 点赞命令 - 支持自动重试
   ctx.command('zanwo')
     .alias('赞我')
     .action(async ({ session }) => {
@@ -314,7 +313,6 @@ export async function apply(ctx: Context, config: Config) {
 
       for (let retry = 0; retry < maxRetries; retry++) {
         try {
-          // 并行发送5个点赞请求
           await Promise.all(Array(5).fill(null).map(() =>
             session.bot.internal.sendLike(session.userId, 10)
           ));
@@ -346,7 +344,7 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 注册自动点赞功能
+  // 自动点赞定时任务配置
   if (config.autoLikeList?.length > 0 && config.autoLikeTime) {
     const [hour, minute] = config.autoLikeTime.split(':').map(Number);
     if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
@@ -381,12 +379,11 @@ export async function apply(ctx: Context, config: Config) {
     });
   }
 
-  // 修改mute命令错误处理
+  // 禁言命令 - 支持多种模式和概率控制
   ctx.command('mute [duration:number]')
     .option('u', '-u <target:text>')
     .option('r', '-r')
     .action(async ({ session, options }, duration) => {
-      // 基础检查
       if (!session?.guildId) {
         const message = await session.send(session.text('commands.mute.messages.errors.guild_only'))
         await autoRecallMessage(session, message)
@@ -399,21 +396,18 @@ export async function apply(ctx: Context, config: Config) {
         return
       }
 
-      // 如果用户指定了时长，检查是否超过最大允许时长
       if (duration && duration > config.mute.maxAllowedDuration) {
         const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.mute.maxAllowedDuration]))
         await autoRecallMessage(session, message)
         return
       }
 
-      // 计算禁言时长
       let random = new Random()
       let muteDuration = duration ? duration * 60
         : config.mute.type === MuteDurationType.RANDOM
           ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60)
           : config.mute.duration * 60
 
-        // 随机禁言
         if (options?.r) {
           const members = (await session.onebot.getGroupMemberList(session.guildId))
             .filter(m => m.role === 'member' && String(m.user_id) !== String(session.selfId))
@@ -425,7 +419,6 @@ export async function apply(ctx: Context, config: Config) {
             return
           }
 
-          // 概率检查
           if (!random.bool(config.mute.probability)) {
             await handleMute(session, session.userId, muteDuration)
             await sendMuteResultMessage(session, session.userId, muteDuration)
@@ -438,19 +431,16 @@ export async function apply(ctx: Context, config: Config) {
           return
         }
 
-        // 指定用户禁言
         if (options?.u) {
           const parsedUser = h.parse(options.u)[0]
           const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim()
 
-          // 自我禁言
           if (!targetId || targetId === session.userId) {
             await handleMute(session, session.userId, muteDuration)
             await sendMuteResultMessage(session, session.userId, muteDuration)
             return
           }
 
-          // 概率检查
           if (!random.bool(config.mute.probability)) {
             await handleMute(session, session.userId, muteDuration)
             await sendMuteResultMessage(session, session.userId, muteDuration)
@@ -462,12 +452,11 @@ export async function apply(ctx: Context, config: Config) {
           return
         }
 
-        // 自我禁言
         await handleMute(session, session.userId, muteDuration)
         await sendMuteResultMessage(session, session.userId, muteDuration)
     })
 
-  // 修改 jrrp 命令的错误处理
+  // 今日人品计算命令 - 支持多种随机算法
   ctx.command('jrrp')
     .option('d', '-d <date>', { type: 'string' })
     .action(async ({ session, options }) => {
@@ -489,14 +478,12 @@ export async function apply(ctx: Context, config: Config) {
           targetDate = date;
         }
 
-        // 使用 "YYYY-MM-DD" 格式
         const year = targetDate.getFullYear();
         const monthStr = String(targetDate.getMonth() + 1).padStart(2, '0');
         const dayStr = String(targetDate.getDate()).padStart(2, '0');
         const currentDateStr = `${year}-${monthStr}-${dayStr}`;
         const monthDay = `${monthStr}-${dayStr}`;
 
-        //特殊日期处理流程
         if (config.holidayMessages?.[monthDay]) {
           await session.send(session.text(config.holidayMessages[monthDay] + 'commands.jrrp.messages.prompt'));
           const response = await session.prompt(10000);
@@ -505,15 +492,14 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 获取用户昵称
         const userNickname = session.username || 'User'
 
-        // 将字符串转换为32位无符号整数
+        // 32位哈希值计算函数
         function hashCode(str: string): number {
           let hash = 5381
           for (let i = 0; i < str.length; i++) {
             hash = ((hash << 5) + hash) + str.charCodeAt(i)
-            hash = hash >>> 0 // 保持为32位无符号整数
+            hash = hash >>> 0
           }
           return hash
         }
@@ -524,13 +510,13 @@ export async function apply(ctx: Context, config: Config) {
         // 根据选择的算法计算今日人品值
         switch (config.choice || 'basic') {
           case 'basic': {
-            // 基础算法：直接取模
+            // 基础算法：直接哈希取模
             const modLuck = Math.abs(hashCode(userDateSeed)) % 101
             luckScore = modLuck
             break
           }
           case 'gaussian': {
-            // 正态分布算法
+            // 高斯分布算法：生成近似正态分布的随机数
             function normalRandom(seed: string): number {
               const hash = hashCode(seed)
               const randomFactor = Math.sin(hash) * 10000
@@ -550,7 +536,7 @@ export async function apply(ctx: Context, config: Config) {
             break
           }
           case 'linear': {
-            // 线性同余算法
+            // 线性同余算法：使用线性同余方法生成伪随机数
             const lcgSeed = hashCode(userDateSeed)
             const lcgValue = (lcgSeed * 9301 + 49297) % 233280
             const lcgRandom = lcgValue / 233280
@@ -564,12 +550,11 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 构建返回消息
+        // 根据分数范围和特殊值生成对应消息
         let message = session.text('commands.jrrp.messages.result', [luckScore, userNickname])
-        if (config.specialMessages && luckScore in config.specialMessages) {   // 修改key为specialMessages
+        if (config.specialMessages && luckScore in config.specialMessages) {
           message += session.text(config.specialMessages[luckScore])
-        } else if (config.rangeMessages) {                  // 修改key为rangeMessages
-          // 遍历所有范围配置
+        } else if (config.rangeMessages) {
           for (const [range, msg] of Object.entries(config.rangeMessages)) {
             const [min, max] = range.split('-').map(Number)
             if (!isNaN(min) && !isNaN(max) && luckScore >= min && luckScore <= max) {
@@ -587,7 +572,7 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 辅助函数：解析日期
+  // 日期解析辅助函数 - 支持完整日期和短格式日期
   function parseDate(dateStr: string, defaultDate: Date): Date | null {
     const fullDateMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
     const shortDateMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})$/);
