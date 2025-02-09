@@ -96,8 +96,6 @@ commands:
       errors:
         guild_only: "This feature is only available in group chats"
         no_valid_members: "No valid members available for muting"
-        target_not_found: "Specified user not found"
-        target_is_admin: "Cannot mute administrators"
         target_failed: "Mute failed, insufficient permissions"
         duration_too_long: "Mute duration exceeds limit ({0} minutes)"
       notify:

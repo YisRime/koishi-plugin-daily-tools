@@ -97,8 +97,6 @@ commands:
         guild_only: "此功能仅限群聊使用"
         no_valid_members: "没有可用的成员可供禁言"
         target_not_found: "找不到指定的用户"
-        target_is_admin: "无法禁言管理员"
-        target_failed: "禁言失败，无权限"
         duration_too_long: "禁言时长超过上限（{0}分钟）"
       notify:
         self_muted: "已将你禁言{0}分钟{1}秒"

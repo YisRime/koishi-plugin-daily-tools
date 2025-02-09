@@ -201,16 +201,20 @@ export async function apply(ctx: Context, config: Config) {
   // 简化的消息撤回函数
   const autoRecallMessage = async (session, message, delay = 10000) => {
     if (message) {
-      setTimeout(async () => {
+      setTimeout(() => {
+        try {
           if (Array.isArray(message)) {
             for (const msg of message) {
               if (msg?.id) {
-                await session.bot.deleteMessage(session.channelId, msg.id);
+                session.bot.deleteMessage(session.channelId, msg.id);
               }
             }
           } else if (message?.id) {
-            await session.bot.deleteMessage(session.channelId, message.id);
+            session.bot.deleteMessage(session.channelId, message.id);
           }
+        } catch {
+          // 忽略撤回失败的错误
+        }
       }, delay);
     }
   };
@@ -223,38 +227,17 @@ export async function apply(ctx: Context, config: Config) {
     if (userCache.has(cacheKey)) {
       return userCache.get(cacheKey);
     }
-
-    try {
-      const user = await ctx.database.getUser(session.platform, userId);
-      const name = user?.name || userId;
-      userCache.set(cacheKey, name);
-      return name;
-    } catch {
-      return userId;
-    }
+    const user = await ctx.database.getUser(session.platform, userId);
+    const name = user?.name || userId;
+    userCache.set(cacheKey, name);
+    return name;
   };
 
   // 修改错误消息映射
-  const handleMute = async (session, targetId: string, duration: number, checkPermission = true) => {
-    try {
-      // 如果不是自己且需要权限检查
-      if (checkPermission && targetId !== session.userId) {
-        try {
-          const memberInfo = await session.onebot.getGroupMemberInfo(session.guildId, String(targetId), false)
-          if (memberInfo.role !== 'member') {
-            throw new Error('target_is_admin')
-          }
-        } catch (error) {
-          throw error.message === 'target_is_admin' ? error : new Error('target_not_found')
-        }
-      }
-
-      await session.onebot.setGroupBan(session.guildId, targetId, duration)
-      await session.bot.deleteMessage(session.channelId, session.messageId)
-      return true
-    } catch (error) {
-      throw new Error(error.message || 'target_failed')
-    }
+  const handleMute = async (session, targetId: string, duration: number) => {
+    await session.onebot.setGroupBan(session.guildId, targetId, duration)
+    await session.bot.deleteMessage(session.channelId, session.messageId)
+    return true
   }
 
   // 修改禁言结果消息
@@ -365,45 +348,37 @@ export async function apply(ctx: Context, config: Config) {
 
   // 注册自动点赞功能
   if (config.autoLikeList?.length > 0 && config.autoLikeTime) {
-    try {
-      const [hour, minute] = config.autoLikeTime.split(':').map(Number);
-      if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-        throw new Error('Invalid time format');
-      }
+    const [hour, minute] = config.autoLikeTime.split(':').map(Number);
+    if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      throw new Error('Invalid time format');
+    }
 
-      ctx.cron(`0 ${minute} ${hour} * * *`, async () => {
-        const results = await Promise.all(config.autoLikeList.map(async (userId) => {
-          let retryCount = 0;
-          const maxRetries = 3;
+    ctx.cron(`0 ${minute} ${hour} * * *`, async () => {
+      const results = await Promise.all(config.autoLikeList.map(async (userId) => {
+        let retryCount = 0;
+        const maxRetries = 3;
 
-          while (retryCount < maxRetries) {
-            try {
-              await Promise.all(Array(5).fill(null).map(() =>
-                ctx.bots.first?.internal.sendLike(userId, 10)
-              ));
-              return `User ${userId} like succeeded`;
-            } catch (error) {
-              retryCount++;
-              if (retryCount === maxRetries) {
-                return `User ${userId} like failed: ${error.message}`;
-              }
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
-        }));
-
-        if (config.notifyAccount) {
+        while (retryCount < maxRetries) {
           try {
-            const resultMessage = results.join('\n');
-            await ctx.bots.first?.sendPrivateMessage(config.notifyAccount, resultMessage);
+            await Promise.all(Array(5).fill(null).map(() =>
+              ctx.bots.first?.internal.sendLike(userId, 10)
+            ));
+            return `User ${userId} like succeeded`;
           } catch (error) {
-            console.error('Failed to send notification:', error);
+            retryCount++;
+            if (retryCount === maxRetries) {
+              return `User ${userId} like failed: ${error.message}`;
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
-      });
-    } catch (error) {
-      console.error('Auto-like task registration failed:', error);
-    }
+      }));
+
+      if (config.notifyAccount) {
+        const resultMessage = results.join('\n');
+        await ctx.bots.first?.sendPrivateMessage(config.notifyAccount, resultMessage);
+      }
+    });
   }
 
   // 修改mute命令错误处理
@@ -452,7 +427,7 @@ export async function apply(ctx: Context, config: Config) {
 
           // 概率检查
           if (!random.bool(config.mute.probability)) {
-            await handleMute(session, session.userId, muteDuration, false)
+            await handleMute(session, session.userId, muteDuration)
             await sendMuteResultMessage(session, session.userId, muteDuration)
             return
           }
@@ -470,14 +445,14 @@ export async function apply(ctx: Context, config: Config) {
 
           // 自我禁言
           if (!targetId || targetId === session.userId) {
-            await handleMute(session, session.userId, muteDuration, false)
+            await handleMute(session, session.userId, muteDuration)
             await sendMuteResultMessage(session, session.userId, muteDuration)
             return
           }
 
           // 概率检查
           if (!random.bool(config.mute.probability)) {
-            await handleMute(session, session.userId, muteDuration, false)
+            await handleMute(session, session.userId, muteDuration)
             await sendMuteResultMessage(session, session.userId, muteDuration)
             return
           }
@@ -488,7 +463,7 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         // 自我禁言
-        await handleMute(session, session.userId, muteDuration, false)
+        await handleMute(session, session.userId, muteDuration)
         await sendMuteResultMessage(session, session.userId, muteDuration)
     })
 
@@ -617,16 +592,12 @@ export async function apply(ctx: Context, config: Config) {
     const fullDateMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
     const shortDateMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})$/);
 
-    try {
-      if (fullDateMatch) {
-        const [_, year, month, day] = fullDateMatch;
-        return new Date(Number(year), Number(month) - 1, Number(day));
-      } else if (shortDateMatch) {
-        const [_, month, day] = shortDateMatch;
-        return new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
-      }
-    } catch {
-      return null;
+    if (fullDateMatch) {
+      const [_, year, month, day] = fullDateMatch;
+      return new Date(Number(year), Number(month) - 1, Number(day));
+    } else if (shortDateMatch) {
+      const [_, month, day] = shortDateMatch;
+      return new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
     }
     return null;
   }
