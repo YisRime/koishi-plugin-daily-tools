@@ -156,7 +156,7 @@ const validateRangeMessages = (ctx: Context, rangeMessages: Record<string, strin
     return false;
   }
 
-  // 检查区间是否连续且不重叠
+  // 检查区间是否连续且不重反
   for (let i = 1; i < ranges.length; i++) {
     if (ranges[i][0] !== ranges[i-1][1] + 1) {
       ctx.logger.warn(ctx.i18n.define('errors.config.range_overlap', { prev: String(ranges[i-1][1]), curr: String(ranges[i][0]) }));
@@ -229,29 +229,36 @@ export async function apply(ctx: Context, config: Config) {
     }
   };
 
-  // 简化后的禁言处理函数
-  const handleMute = async (session, targetId: string, duration: number) => {
+  // 优化禁言处理函数，集成权限检查
+  const handleMute = async (session, targetId: string, duration: number, checkPermission = true) => {
     try {
-      // 1. 执行禁言
-      await session.onebot.setGroupBan(session.guildId, targetId, duration);
-
-      // 2. 尝试撤回命令消息
-      try {
-        await session.bot.deleteMessage(session.channelId, session.messageId);
-      } catch (error) {
-        console.error('Failed to delete mute command message:', error);
+      // 如果需要权限检查且目标不是自己，先检查权限
+      if (checkPermission && targetId !== session.userId) {
+        try {
+          const memberInfo = await session.onebot.getGroupMemberInfo(session.guildId, String(targetId), false);
+          if (memberInfo.role !== 'member') {
+            throw new Error('target_is_admin');
+          }
+        } catch (error) {
+          if (error.message === 'target_is_admin') throw error;
+          throw new Error('target_not_found');
+        }
       }
+
+      // 执行禁言
+      await session.onebot.setGroupBan(session.guildId, targetId, duration);
+      await session.bot.deleteMessage(session.channelId, session.messageId);
 
       return true;
     } catch (error) {
-      console.error(`Mute operation failed for ${targetId}:`, error);
+      if (error.message === 'target_is_admin' || error.message === 'target_not_found') throw error;
       throw new Error('target_failed');
     }
   };
 
   // 处理禁言结果消息
-  const sendMuteResultMessage = async (session, targetId: string, duration: number, showMessage = true) => {
-    if (showMessage && config.mute.enableMessage) {
+  const sendMuteResultMessage = async (session, targetId: string, duration: number) => {
+    if (config.mute.enableMessage) {
       const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
       const message = await session.send(session.text(
         targetId === session.userId
@@ -399,37 +406,24 @@ export async function apply(ctx: Context, config: Config) {
     }
   }
 
-  // 添加群成员缓存
-  const groupMembersCache = new Map<string, { members: string[], timestamp: number }>();
-  const CACHE_EXPIRE_TIME = 5 * 60 * 1000; // 5分钟缓存过期
-
   // 优化获取群成员列表函数
   const getGroupMembers = async (session) => {
-    const cacheKey = `${session.platform}:${session.guildId}`;
-    const now = Date.now();
-    const cached = groupMembersCache.get(cacheKey);
-
-    if (cached && (now - cached.timestamp) < CACHE_EXPIRE_TIME) {
-      return cached.members;
-    }
-
-    const members = (await session.onebot.getGroupMemberList(session.guildId))
-      .map(m => m.user_id.toString())
-      .filter(id => id !== session.selfId);
-
-    groupMembersCache.set(cacheKey, { members, timestamp: now });
-    return members;
-  };
-
-  // 优化权限检查函数，使用缓存的成员信息
-  const checkMutePermission = async (session, targetId: string | number) => {
     try {
-      const memberInfo = await session.onebot.getGroupMemberInfo(session.guildId, String(targetId), false);
-      return memberInfo.role !== 'owner' && memberInfo.role !== 'admin';
-    } catch {
-      return false;
+      // 使用 getGroupMemberMap 获取成员列表
+      const memberMap = await session.onebot.getGroupMemberMap(session.guildId)
+
+      // 过滤出普通成员(排除管理员、群主和机器人自己)
+      return Array.from(memberMap.values())
+        .filter((member: { user_id: string | number, role: string }) =>
+          member.user_id !== session.selfId &&
+          member.role === 'member'
+        )
+        .map((m: { user_id: string | number }) => m.user_id.toString())
+    } catch (error) {
+      console.error('Failed to get group members:', error)
+      return []
     }
-  };
+  }
 
   // 修改 mute 命令处理
   ctx.command('mute [duration:number]')
@@ -448,7 +442,6 @@ export async function apply(ctx: Context, config: Config) {
         return;
       }
 
-      // 计算禁言时长
       const random = new Random();
       const muteDuration = duration ? duration * 60
         : config.mute.type === MuteDurationType.RANDOM
@@ -456,68 +449,62 @@ export async function apply(ctx: Context, config: Config) {
           : config.mute.duration * 60;
 
       try {
+        // 处理随机禁言
         if (options?.r) {
-          // 并行获取群成员列表和权限检查
-          const [members] = await Promise.all([
-            getGroupMembers(session),
-            checkMutePermission(session, session.userId)
-          ]);
+          const members = await getGroupMembers(session)
+          if (!members.length) {
+            const message = await session.send(session.text('commands.mute.messages.no_valid_members'))
+            await autoRecallMessage(session, message)
+            return
+          }
 
-          if (!members.length) throw new Error('no_valid_members');
-
+          // 检查概率，失败则禁言自己
           if (!random.bool(config.mute.probability)) {
             if (config.mute.enableMessage) {
               const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
               await autoRecallMessage(session, message);
             }
-            await handleMute(session, session.userId, muteDuration);
+            await handleMute(session, session.userId, muteDuration, false);
             await sendMuteResultMessage(session, session.userId, muteDuration);
             return;
           }
 
-          const targetId = random.pick(members);
-          // 并行执行权限检查和禁言操作
-          await Promise.all([
-            checkMutePermission(session, String(targetId)).then(canMute => {
-              if (!canMute) throw new Error('target_is_admin');
-            }),
-            handleMute(session, String(targetId), muteDuration)
-          ]);
-          await sendMuteResultMessage(session, String(targetId), muteDuration);
-          return;
-        } else if (options?.u) {
-          const parsedUser = h.parse(options.u)[0];
-          const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
-
-          if (!targetId || targetId === session.userId) {
-            await handleMute(session, session.userId, muteDuration);
-            await sendMuteResultMessage(session, session.userId, muteDuration);
-            return;
-          }
-
-          if (!random.bool(config.mute.probability)) {
-            if (config.mute.enableMessage) {
-              const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
-              await autoRecallMessage(session, message);
-            }
-            await handleMute(session, session.userId, muteDuration);
-            await sendMuteResultMessage(session, session.userId, muteDuration);
-            return;
-          }
-
-          // 并行执行权限检查和禁言操作
-          await Promise.all([
-            checkMutePermission(session, targetId).then(canMute => {
-              if (!canMute) throw new Error('target_is_admin');
-            }),
-            handleMute(session, targetId, muteDuration)
-          ]);
+          const targetId = String(random.pick(members));
+          await handleMute(session, targetId, muteDuration, true);
           await sendMuteResultMessage(session, targetId, muteDuration);
           return;
         }
 
-        // 自我禁言处理
-        await handleMute(session, session.userId, muteDuration);
+        // 处理指定用户禁言
+        if (options?.u) {
+          const parsedUser = h.parse(options.u)[0];
+          const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
+
+          // 如果目标是自己或无效，直接禁言自己
+          if (!targetId || targetId === session.userId) {
+            await handleMute(session, session.userId, muteDuration, false);
+            await sendMuteResultMessage(session, session.userId, muteDuration);
+            return;
+          }
+
+          // 检查概率，失败则禁言自己
+          if (!random.bool(config.mute.probability)) {
+            if (config.mute.enableMessage) {
+              const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
+              await autoRecallMessage(session, message);
+            }
+            await handleMute(session, session.userId, muteDuration, false);
+            await sendMuteResultMessage(session, session.userId, muteDuration);
+            return;
+          }
+
+          await handleMute(session, targetId, muteDuration, true);
+          await sendMuteResultMessage(session, targetId, muteDuration);
+          return;
+        }
+
+        // 处理自我禁言
+        await handleMute(session, session.userId, muteDuration, false);
         await sendMuteResultMessage(session, session.userId, muteDuration);
       } catch (error) {
         const message = await session.send(session.text(`commands.mute.messages.${error.message}`));
