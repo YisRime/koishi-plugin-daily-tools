@@ -406,21 +406,36 @@ export async function apply(ctx: Context, config: Config) {
     }
   }
 
-  // 优化获取群成员列表函数
-  const getGroupMembers = async (session) => {
-    try {
-      // 使用 getGroupMemberMap 获取成员列表
-      const memberMap = await session.onebot.getGroupMemberMap(session.guildId)
+  // 定义群成员信息接口
+  interface GroupMember {
+    user_id: string | number
+    role: 'owner' | 'admin' | 'member'
+    card?: string
+    nickname?: string
+  }
 
-      // 过滤出普通成员(排除管理员、群主和机器人自己)
-      return Array.from(memberMap.values())
-        .filter((member: { user_id: string | number, role: string }) =>
-          member.user_id !== session.selfId &&
-          member.role === 'member'
-        )
-        .map((m: { user_id: string | number }) => m.user_id.toString())
+  // 优化获取群成员列表函数
+  const getGroupMembers = async (session): Promise<string[]> => {
+    try {
+      // 获取成员列表
+      const memberList = await session.onebot.getGroupMemberList(session.guildId)
+      if (!Array.isArray(memberList)) {
+        ctx.logger.warn(session.text('errors.member_list_invalid'))
+        return []
+      }
+
+      // 过滤并处理成员列表
+      return memberList
+        .filter((member: GroupMember) => {
+          // 过滤掉机器人自己
+          if (member.user_id === session.selfId) return false
+          // 只保留普通成员
+          if (member.role !== 'member') return false
+          return true
+        })
+        .map((member: GroupMember) => String(member.user_id))
     } catch (error) {
-      console.error('Failed to get group members:', error)
+      ctx.logger.warn(session.text('errors.get_members_failed', [error.message]))
       return []
     }
   }

@@ -101,6 +101,8 @@ commands:
       probability_failed_self: "Target mute failed, you've been muted for {0} minutes {1} seconds"
       mute_others_disabled: "Muting others is disabled"
       target_is_admin: "Cannot mute administrators"
+      no_valid_members: "No valid members to mute"
+      target_not_found: "Target user not found"
 
   jrrp:
     description: "Daily Luck"
@@ -164,3 +166,5 @@ errors:
     range_overlap: "Gap or overlap detected between ranges {0} and {1}"
     invalid_autolike_time: "Invalid auto-like time format"
     invalid_sleep_time: "Invalid sleep until time format"
+  get_members_failed: "Failed to get group member list: {0}"
+  member_list_invalid: "Invalid group member list format"

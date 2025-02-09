@@ -101,6 +101,8 @@ commands:
       probability_failed_self: "禁言失败，已将你禁言{0}分钟{1}秒"
       mute_others_disabled: "已禁用禁言他人功能"
       target_is_admin: "无法禁言管理员"
+      no_valid_members: "没有可供禁言的成员"
+      target_not_found: "找不到目标用户"
 
   jrrp:
     description: "今日人品"
@@ -164,3 +166,5 @@ errors:
     range_overlap: "区间{0}和{1}之间存在重叠或空隙"
     invalid_autolike_time: "自动点赞时间格式无效"
     invalid_sleep_time: "睡眠结束时间格式无效"
+  get_members_failed: "获取群成员列表失败：{0}"
+  member_list_invalid: "群成员列表格式无效"
