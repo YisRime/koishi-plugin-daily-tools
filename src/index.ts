@@ -1,33 +1,35 @@
+// 导入必要的依赖
 import { Context, Schema, Random, h } from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
 import * as cron from 'koishi-plugin-cron'
 
+// 插件基本信息
 export const name = 'daily-tools'
 export const inject = {
   required: ['database'],
   optional: ['cron']
 }
 
-// 定义不同的随机数生成算法，用于计算今日人品值
+// 今日人品计算的不同算法实现
 export const enum JrrpAlgorithm {
-  BASIC = 'basic',      // 基础哈希算法: 使用简单的哈希取模运算
-  GAUSSIAN = 'gaussian', // 高斯分布算法: 生成近似正态分布的随机数
-  LINEAR = 'linear'     // 线性同余算法: 使用线性同余方法生成伪随机数
+  BASIC = 'basic',      // 基于简单哈希的随机算法
+  GAUSSIAN = 'gaussian', // 基于正态分布的随机算法
+  LINEAR = 'linear'     // 基于线性同余的随机算法
 }
 
-// 定义不同的睡眠时长计算方式
+// 睡眠模式选项
 export const enum SleepMode {
-  STATIC = 'static',  // 静态模式: 固定时长
-  UNTIL = 'until',    // 定时模式: 睡到指定时间
-  RANDOM = 'random'   // 随机模式: 在指定范围内随机时长
+  STATIC = 'static',
+  UNTIL = 'until',
+  RANDOM = 'random'
 }
 
+// 禁言时长类型
 export const enum MuteDurationType {
-  STATIC = 'static',  // 固定时长
-  RANDOM = 'random'   // 随机时长
+  STATIC = 'static',
+  RANDOM = 'random'
 }
 
-// 修改配置接口定义
 export interface Config {
   sleep: {
     type: SleepMode
@@ -39,7 +41,7 @@ export interface Config {
   autoLikeList?: string[]
   autoLikeTime?: string
   notifyAccount?: string
-  enableLikeReminder?: boolean // 添加是否提示赞主人的选项
+  enableLikeReminder?: boolean
   choice?: JrrpAlgorithm
   specialMessages?: Record<number, string>
   rangeMessages?: Record<string, string>
@@ -49,13 +51,13 @@ export interface Config {
     duration: number
     minDuration: number
     maxDuration: number
+    maxAllowedDuration: number
     probability: number
     enableMessage: boolean
     enableMuteOthers: boolean
   }
 }
 
-// 更新配置模式定义
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     sleep: Schema.object({
@@ -93,6 +95,7 @@ export const Config: Schema<Config> = Schema.intersect([
       duration: Schema.number().default(5),
       minDuration: Schema.number().default(0.1),
       maxDuration: Schema.number().default(10),
+      maxAllowedDuration: Schema.number().default(1440),
       enableMessage: Schema.boolean().default(false),
       enableMuteOthers: Schema.boolean().default(true),
       probability: Schema.number().default(0.5).min(0).max(1),
@@ -133,11 +136,10 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 ])
 
-// 修改区间检查辅助函数
+// 配置验证相关函数
 const validateRangeMessages = (ctx: Context, rangeMessages: Record<string, string>): boolean => {
   const ranges: [number, number][] = [];
 
-  // 解析所有区间
   for (const range of Object.keys(rangeMessages)) {
     const [start, end] = range.split('-').map(Number);
     if (isNaN(start) || isNaN(end) || start > end || start < 0 || end > 100) {
@@ -147,16 +149,13 @@ const validateRangeMessages = (ctx: Context, rangeMessages: Record<string, strin
     ranges.push([start, end]);
   }
 
-  // 按起始位置排序
   ranges.sort((a, b) => a[0] - b[0]);
 
-  // 检查是否覆盖 0-100
   if (ranges[0][0] !== 0 || ranges[ranges.length - 1][1] !== 100) {
     ctx.logger.warn(ctx.i18n.define('errors.config.range_not_covered', {}));
     return false;
   }
 
-  // 检查区间是否连续且不重反
   for (let i = 1; i < ranges.length; i++) {
     if (ranges[i][0] !== ranges[i-1][1] + 1) {
       ctx.logger.warn(ctx.i18n.define('errors.config.range_overlap', { prev: String(ranges[i-1][1]), curr: String(ranges[i][0]) }));
@@ -167,7 +166,7 @@ const validateRangeMessages = (ctx: Context, rangeMessages: Record<string, strin
   return true;
 };
 
-// 修改配置验证函数
+// 配置整体验证函数
 const validateConfig = (ctx: Context, config: Config): boolean => {
   if (config.autoLikeTime && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(config.autoLikeTime)) {
     ctx.logger.warn(ctx.i18n.define('errors.config.invalid_autolike_time', {}));
@@ -188,7 +187,6 @@ const validateConfig = (ctx: Context, config: Config): boolean => {
 };
 
 export async function apply(ctx: Context, config: Config) {
-  // 配置验证
   if (!validateConfig(ctx, config)) {
     throw new Error('Invalid configuration');
   }
@@ -196,82 +194,66 @@ export async function apply(ctx: Context, config: Config) {
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
-  // 添加通用的消息撤回函数
+  // 消息自动撤回处理
   const autoRecallMessage = async (session, message, delay = 10000) => {
     if (message) {
-      setTimeout(async () => {
-        try {
-          const messageId = Array.isArray(message) ? message[0] : message;
-          await session.bot.deleteMessage(session.channelId, messageId);
-        } catch (error) {
-          console.error('Failed to recall message:', error);
-        }
+      setTimeout(() => {
+          if (Array.isArray(message)) {
+            for (const msg of message) {
+              if (msg?.id) {
+                session.bot.deleteMessage(session.channelId, msg.id);
+              }
+            }
+          } else if (message?.id) {
+            session.bot.deleteMessage(session.channelId, message.id);
+          }
       }, delay);
     }
   };
 
+  // 用户名称缓存管理
   const userCache = new Map<string, string>();
 
-  // 优化获取用户名函数
+  // 获取用户显示名称(支持缓存)
   const getUserName = async (session, userId: string) => {
     const cacheKey = `${session.platform}:${userId}`;
     if (userCache.has(cacheKey)) {
       return userCache.get(cacheKey);
     }
-
-    try {
-      const user = await ctx.database.getUser(session.platform, userId);
-      const name = user?.name || userId;
-      userCache.set(cacheKey, name);
-      return name;
-    } catch {
-      return userId;
-    }
+    const user = await ctx.database.getUser(session.platform, userId);
+    const name = user?.name || userId;
+    userCache.set(cacheKey, name);
+    return name;
   };
 
-  // 优化禁言处理函数，集成权限检查
-  const handleMute = async (session, targetId: string, duration: number, checkPermission = true) => {
-    try {
-      // 如果需要权限检查且目标不是自己，先检查权限
-      if (checkPermission && targetId !== session.userId) {
-        try {
-          const memberInfo = await session.onebot.getGroupMemberInfo(session.guildId, String(targetId), false);
-          if (memberInfo.role !== 'member') {
-            throw new Error('target_is_admin');
-          }
-        } catch (error) {
-          if (error.message === 'target_is_admin') throw error;
-          throw new Error('target_not_found');
-        }
+  // 禁言操作核心处理函数
+  const handleMute = async (session, targetId: string, duration: number) => {
+    await session.onebot.setGroupBan(session.guildId, targetId, duration)
+    if (session.messageId) {
+      try {
+        await session.bot.deleteMessage(session.channelId, session.messageId)
+      } catch {
+        // 忽略撤回失败
       }
-
-      // 执行禁言
-      await session.onebot.setGroupBan(session.guildId, targetId, duration);
-      await session.bot.deleteMessage(session.channelId, session.messageId);
-
-      return true;
-    } catch (error) {
-      if (error.message === 'target_is_admin' || error.message === 'target_not_found') throw error;
-      throw new Error('target_failed');
     }
-  };
+    return true
+  }
 
-  // 处理禁言结果消息
-  const sendMuteResultMessage = async (session, targetId: string, duration: number) => {
-    if (config.mute.enableMessage) {
-      const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
+  // 发送禁言结果通知
+  const sendMuteResultMessage = async (session, targetId: string, duration: number, showMessage = true) => {
+    if (showMessage && config.mute.enableMessage) {
+      const [minutes, seconds] = [(duration / 60) | 0, duration % 60]
       const message = await session.send(session.text(
         targetId === session.userId
-          ? 'commands.mute.messages.self_success'
-          : 'commands.mute.messages.target_success',
+          ? 'commands.mute.messages.notify.self_muted'
+          : 'commands.mute.messages.notify.target_muted',
         [await getUserName(session, targetId), minutes, seconds].filter(Boolean)
-      ));
-
-      await autoRecallMessage(session, message);
+      ))
+      await autoRecallMessage(session, message)
     }
-  };
+  }
 
-  // 修改 sleep 命令的错误处理
+  // 精致睡眠命令 - 支持多种睡眠模式
   ctx.command('sleep')
     .alias('jzsm', '精致睡眠')
     .action(async ({ session }) => {
@@ -316,7 +298,7 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 优化 zanwo 命令，使用 Promise.all 并行处理
+  // 点赞命令 - 支持自动重试
   ctx.command('zanwo')
     .alias('赞我')
     .action(async ({ session }) => {
@@ -331,7 +313,6 @@ export async function apply(ctx: Context, config: Config) {
 
       for (let retry = 0; retry < maxRetries; retry++) {
         try {
-          // 并行发送5个点赞请求
           await Promise.all(Array(5).fill(null).map(() =>
             session.bot.internal.sendLike(session.userId, 10)
           ));
@@ -363,171 +344,119 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 注册自动点赞功能
+  // 自动点赞定时任务配置
   if (config.autoLikeList?.length > 0 && config.autoLikeTime) {
-    try {
-      const [hour, minute] = config.autoLikeTime.split(':').map(Number);
-      if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-        throw new Error('Invalid time format');
-      }
+    const [hour, minute] = config.autoLikeTime.split(':').map(Number);
+    if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      throw new Error('Invalid time format');
+    }
 
-      ctx.cron(`0 ${minute} ${hour} * * *`, async () => {
-        const results = await Promise.all(config.autoLikeList.map(async (userId) => {
-          let retryCount = 0;
-          const maxRetries = 3;
+    ctx.cron(`0 ${minute} ${hour} * * *`, async () => {
+      const results = await Promise.all(config.autoLikeList.map(async (userId) => {
+        let retryCount = 0;
+        const maxRetries = 3;
 
-          while (retryCount < maxRetries) {
-            try {
-              await Promise.all(Array(5).fill(null).map(() =>
-                ctx.bots.first?.internal.sendLike(userId, 10)
-              ));
-              return `User ${userId} like succeeded`;
-            } catch (error) {
-              retryCount++;
-              if (retryCount === maxRetries) {
-                return `User ${userId} like failed: ${error.message}`;
-              }
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
-        }));
-
-        if (config.notifyAccount) {
+        while (retryCount < maxRetries) {
           try {
-            const resultMessage = results.join('\n');
-            await ctx.bots.first?.sendPrivateMessage(config.notifyAccount, resultMessage);
+            await Promise.all(Array(5).fill(null).map(() =>
+              ctx.bots.first?.internal.sendLike(userId, 10)
+            ));
+            return `User ${userId} like succeeded`;
           } catch (error) {
-            console.error('Failed to send notification:', error);
+            retryCount++;
+            if (retryCount === maxRetries) {
+              return `User ${userId} like failed: ${error.message}`;
+            }
+            await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
-      });
-    } catch (error) {
-      console.error('Auto-like task registration failed:', error);
-    }
-  }
+      }));
 
-  // 定义群成员信息接口
-  interface GroupMember {
-    user_id: string | number
-    role: 'owner' | 'admin' | 'member'
-    card?: string
-    nickname?: string
-  }
-
-  // 优化获取群成员列表函数
-  const getGroupMembers = async (session): Promise<string[]> => {
-    try {
-      // 获取成员列表
-      const memberList = await session.onebot.getGroupMemberList(session.guildId)
-      if (!Array.isArray(memberList)) {
-        ctx.logger.warn(session.text('errors.member_list_invalid'))
-        return []
+      if (config.notifyAccount) {
+        const resultMessage = results.join('\n');
+        await ctx.bots.first?.sendPrivateMessage(config.notifyAccount, resultMessage);
       }
-
-      // 过滤并处理成员列表
-      return memberList
-        .filter((member: GroupMember) => {
-          // 过滤掉机器人自己
-          if (member.user_id === session.selfId) return false
-          // 只保留普通成员
-          if (member.role !== 'member') return false
-          return true
-        })
-        .map((member: GroupMember) => String(member.user_id))
-    } catch (error) {
-      ctx.logger.warn(session.text('errors.get_members_failed', [error.message]))
-      return []
-    }
+    });
   }
 
-  // 修改 mute 命令处理
+  // 禁言命令 - 支持多种模式和概率控制
   ctx.command('mute [duration:number]')
     .option('u', '-u <target:text>')
     .option('r', '-r')
     .action(async ({ session, options }, duration) => {
       if (!session?.guildId) {
-        const message = await session.send(session.text('commands.mute.messages.guild_only'));
-        await autoRecallMessage(session, message);
-        return;
+        const message = await session.send(session.text('commands.mute.messages.errors.guild_only'))
+        await autoRecallMessage(session, message)
+        return
       }
 
       if (!config.mute.enableMuteOthers && (options?.u || options?.r)) {
-        const message = await session.send(session.text('commands.mute.messages.mute_others_disabled'));
-        await autoRecallMessage(session, message);
-        return;
+        const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'))
+        await autoRecallMessage(session, message)
+        return
       }
 
-      const random = new Random();
-      const muteDuration = duration ? duration * 60
+      if (duration && duration > config.mute.maxAllowedDuration) {
+        const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.mute.maxAllowedDuration]))
+        await autoRecallMessage(session, message)
+        return
+      }
+
+      let random = new Random()
+      let muteDuration = duration ? duration * 60
         : config.mute.type === MuteDurationType.RANDOM
           ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60)
-          : config.mute.duration * 60;
+          : config.mute.duration * 60
 
-      try {
-        // 处理随机禁言
         if (options?.r) {
-          const members = await getGroupMembers(session)
+          const members = (await session.onebot.getGroupMemberList(session.guildId))
+            .filter(m => m.role === 'member' && String(m.user_id) !== String(session.selfId))
+            .map(m => String(m.user_id))
+
           if (!members.length) {
             const message = await session.send(session.text('commands.mute.messages.no_valid_members'))
             await autoRecallMessage(session, message)
             return
           }
 
-          // 检查概率，失败则禁言自己
           if (!random.bool(config.mute.probability)) {
-            if (config.mute.enableMessage) {
-              const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
-              await autoRecallMessage(session, message);
-            }
-            await handleMute(session, session.userId, muteDuration, false);
-            await sendMuteResultMessage(session, session.userId, muteDuration);
-            return;
+            await handleMute(session, session.userId, muteDuration)
+            await sendMuteResultMessage(session, session.userId, muteDuration)
+            return
           }
 
-          const targetId = String(random.pick(members));
-          await handleMute(session, targetId, muteDuration, true);
-          await sendMuteResultMessage(session, targetId, muteDuration);
-          return;
+          const targetId = random.pick(members)
+          await handleMute(session, targetId, muteDuration)
+          await sendMuteResultMessage(session, targetId, muteDuration)
+          return
         }
 
-        // 处理指定用户禁言
         if (options?.u) {
-          const parsedUser = h.parse(options.u)[0];
-          const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
+          const parsedUser = h.parse(options.u)[0]
+          const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim()
 
-          // 如果目标是自己或无效，直接禁言自己
           if (!targetId || targetId === session.userId) {
-            await handleMute(session, session.userId, muteDuration, false);
-            await sendMuteResultMessage(session, session.userId, muteDuration);
-            return;
+            await handleMute(session, session.userId, muteDuration)
+            await sendMuteResultMessage(session, session.userId, muteDuration)
+            return
           }
 
-          // 检查概率，失败则禁言自己
           if (!random.bool(config.mute.probability)) {
-            if (config.mute.enableMessage) {
-              const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
-              await autoRecallMessage(session, message);
-            }
-            await handleMute(session, session.userId, muteDuration, false);
-            await sendMuteResultMessage(session, session.userId, muteDuration);
-            return;
+            await handleMute(session, session.userId, muteDuration)
+            await sendMuteResultMessage(session, session.userId, muteDuration)
+            return
           }
 
-          await handleMute(session, targetId, muteDuration, true);
-          await sendMuteResultMessage(session, targetId, muteDuration);
-          return;
+          await handleMute(session, targetId, muteDuration)
+          await sendMuteResultMessage(session, targetId, muteDuration)
+          return
         }
 
-        // 处理自我禁言
-        await handleMute(session, session.userId, muteDuration, false);
-        await sendMuteResultMessage(session, session.userId, muteDuration);
-      } catch (error) {
-        const message = await session.send(session.text(`commands.mute.messages.${error.message}`));
-        await autoRecallMessage(session, message);
-      }
-    });
+        await handleMute(session, session.userId, muteDuration)
+        await sendMuteResultMessage(session, session.userId, muteDuration)
+    })
 
-  // 修改 jrrp 命令的错误处理
+  // 今日人品计算命令 - 支持多种随机算法
   ctx.command('jrrp')
     .option('d', '-d <date>', { type: 'string' })
     .action(async ({ session, options }) => {
@@ -549,14 +478,12 @@ export async function apply(ctx: Context, config: Config) {
           targetDate = date;
         }
 
-        // 使用 "YYYY-MM-DD" 格式
         const year = targetDate.getFullYear();
         const monthStr = String(targetDate.getMonth() + 1).padStart(2, '0');
         const dayStr = String(targetDate.getDate()).padStart(2, '0');
         const currentDateStr = `${year}-${monthStr}-${dayStr}`;
         const monthDay = `${monthStr}-${dayStr}`;
 
-        //特殊日期处理流程
         if (config.holidayMessages?.[monthDay]) {
           await session.send(session.text(config.holidayMessages[monthDay] + 'commands.jrrp.messages.prompt'));
           const response = await session.prompt(10000);
@@ -565,15 +492,14 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 获取用户昵称
         const userNickname = session.username || 'User'
 
-        // 将字符串转换为32位无符号整数
+        // 32位哈希值计算函数
         function hashCode(str: string): number {
           let hash = 5381
           for (let i = 0; i < str.length; i++) {
             hash = ((hash << 5) + hash) + str.charCodeAt(i)
-            hash = hash >>> 0 // 保持为32位无符号整数
+            hash = hash >>> 0
           }
           return hash
         }
@@ -584,13 +510,13 @@ export async function apply(ctx: Context, config: Config) {
         // 根据选择的算法计算今日人品值
         switch (config.choice || 'basic') {
           case 'basic': {
-            // 基础算法：直接取模
+            // 基础算法：直接哈希取模
             const modLuck = Math.abs(hashCode(userDateSeed)) % 101
             luckScore = modLuck
             break
           }
           case 'gaussian': {
-            // 正态分布算法
+            // 高斯分布算法：生成近似正态分布的随机数
             function normalRandom(seed: string): number {
               const hash = hashCode(seed)
               const randomFactor = Math.sin(hash) * 10000
@@ -610,7 +536,7 @@ export async function apply(ctx: Context, config: Config) {
             break
           }
           case 'linear': {
-            // 线性同余算法
+            // 线性同余算法：使用线性同余方法生成伪随机数
             const lcgSeed = hashCode(userDateSeed)
             const lcgValue = (lcgSeed * 9301 + 49297) % 233280
             const lcgRandom = lcgValue / 233280
@@ -624,12 +550,11 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 构建返回消息
+        // 根据分数范围和特殊值生成对应消息
         let message = session.text('commands.jrrp.messages.result', [luckScore, userNickname])
-        if (config.specialMessages && luckScore in config.specialMessages) {   // 修改key为specialMessages
+        if (config.specialMessages && luckScore in config.specialMessages) {
           message += session.text(config.specialMessages[luckScore])
-        } else if (config.rangeMessages) {                  // 修改key为rangeMessages
-          // 遍历所有范围配置
+        } else if (config.rangeMessages) {
           for (const [range, msg] of Object.entries(config.rangeMessages)) {
             const [min, max] = range.split('-').map(Number)
             if (!isNaN(min) && !isNaN(max) && luckScore >= min && luckScore <= max) {
@@ -647,21 +572,17 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 辅助函数：解析日期
+  // 日期解析辅助函数 - 支持完整日期和短格式日期
   function parseDate(dateStr: string, defaultDate: Date): Date | null {
     const fullDateMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
     const shortDateMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})$/);
 
-    try {
-      if (fullDateMatch) {
-        const [_, year, month, day] = fullDateMatch;
-        return new Date(Number(year), Number(month) - 1, Number(day));
-      } else if (shortDateMatch) {
-        const [_, month, day] = shortDateMatch;
-        return new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
-      }
-    } catch {
-      return null;
+    if (fullDateMatch) {
+      const [_, year, month, day] = fullDateMatch;
+      return new Date(Number(year), Number(month) - 1, Number(day));
+    } else if (shortDateMatch) {
+      const [_, month, day] = shortDateMatch;
+      return new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
     }
     return null;
   }
