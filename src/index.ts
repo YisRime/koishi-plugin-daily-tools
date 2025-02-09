@@ -194,36 +194,48 @@ export async function apply(ctx: Context, config: Config) {
   // 通用函数
   const handleMute = async (session, targetId: string, duration: number, showMessage = true) => {
     try {
+      // 1. 先检查权限
       const memberInfo = await session.onebot.getGroupMemberInfo(session.guildId, targetId, true)
         .catch(() => null);
 
       if (!memberInfo) {
-        return session.text('commands.mute.messages.target_failed');
+        const errorMsg = await session.send(session.text('commands.mute.messages.target_failed'));
+        await autoRecallMessage(session, errorMsg);
+        return;
       }
 
       if (memberInfo.role === 'owner' || memberInfo.role === 'admin') {
-        return session.text('commands.mute.messages.target_is_admin');
+        const errorMsg = await session.send(session.text('commands.mute.messages.target_is_admin'));
+        await autoRecallMessage(session, errorMsg);
+        return;
       }
 
-      // 先执行禁言
+      // 2. 执行禁言
       await session.onebot.setGroupBan(session.guildId, targetId, duration);
 
-      // 禁言成功后再发送消息
-      if (!showMessage || !config.mute.enableMessage) return null;
+      // 3. 尝试撤回命令消息
+      try {
+        await session.bot.deleteMessage(session.channelId, session.messageId);
+      } catch (error) {
+        console.error('Failed to delete mute command message:', error);
+      }
 
-      const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
-      const message = await session.send(session.text(
-        targetId === session.userId
-          ? 'commands.mute.messages.self_success'
-          : 'commands.mute.messages.target_success',
-        [await getUserName(session, targetId), minutes, seconds].filter(Boolean)
-      ));
+      // 4. 发送提示消息
+      if (showMessage && config.mute.enableMessage) {
+        const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
+        const message = await session.send(session.text(
+          targetId === session.userId
+            ? 'commands.mute.messages.self_success'
+            : 'commands.mute.messages.target_success',
+          [await getUserName(session, targetId), minutes, seconds].filter(Boolean)
+        ));
 
-      await autoRecallMessage(session, message);
-      return null;
+        await autoRecallMessage(session, message);
+      }
     } catch (error) {
       console.error(`Mute operation failed for ${targetId}:`, error);
-      return session.text('commands.mute.messages.target_failed');
+      const errorMsg = await session.send(session.text('commands.mute.messages.target_failed'));
+      await autoRecallMessage(session, errorMsg);
     }
   };
 
@@ -367,13 +379,6 @@ export async function apply(ctx: Context, config: Config) {
     .option('u', '-u <target:text>')
     .option('r', '-r')
     .action(async ({ session, options }, duration) => {
-      // 先尝试撤回命令消息
-      try {
-        await session.bot.deleteMessage(session.channelId, session.messageId);
-      } catch (error) {
-        console.error('Failed to delete mute command message:', error);
-      }
-
       if (!session?.guildId) {
         const message = await session.send(session.text('commands.mute.messages.guild_only'));
         await autoRecallMessage(session, message);
@@ -392,60 +397,41 @@ export async function apply(ctx: Context, config: Config) {
           ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60)
           : config.mute.duration * 60;
 
-      // 处理选项逻辑
-      if (options?.r || options?.u) {
-        // 如果已经禁用了禁言他人功能，这里就不会执行到了
-        if (options.r) {
-          try {
-            const members = (await session.onebot.getGroupMemberList(session.guildId))
-              .map(m => m.user_id.toString())
-              .filter(id => id !== session.selfId && id !== session.userId);
+      if (options?.r) {
+        try {
+          const members = (await session.onebot.getGroupMemberList(session.guildId))
+            .map(m => m.user_id.toString())
+            .filter(id => id !== session.selfId && id !== session.userId);
 
-            if (!members.length) {
-              const message = await session.send(session.text('commands.mute.messages.failed'));
-              await autoRecallMessage(session, message);
-              return;
-            }
+          if (!members.length) return;
 
-            // 随机失败则改为禁言自己
-            if (!random.bool(config.mute.probability)) {
-              // 只在启用消息提示时发送失败消息
-              if (config.mute.enableMessage) {
-                const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
-                await autoRecallMessage(session, message);
-              }
-              return handleMute(session, session.userId, muteDuration);
-            }
-            return handleMute(session, random.pick(members), muteDuration);
-          } catch {
-            const message = await session.send(session.text('commands.mute.messages.failed'));
-            await autoRecallMessage(session, message);
-            return;
-          }
-        } else {
-          const parsedUser = h.parse(options.u)[0];
-          const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
-
-          if (!targetId) {
-            const message = await session.send(session.text('commands.mute.messages.target_failed'));
-            await autoRecallMessage(session, message);
-            return;
-          }
-
-          // 指定用户禁言失败则改为禁言自己
           if (!random.bool(config.mute.probability)) {
-            // 只在启用消息提示时发送失败消息
             if (config.mute.enableMessage) {
               const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
               await autoRecallMessage(session, message);
             }
             return handleMute(session, session.userId, muteDuration);
           }
-          return handleMute(session, targetId, muteDuration);
+          return handleMute(session, random.pick(members), muteDuration);
+        } catch {
+          return handleMute(session, session.userId, muteDuration);
         }
+      } else if (options?.u) {
+        const parsedUser = h.parse(options.u)[0];
+        const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
+
+        if (!targetId) return handleMute(session, session.userId, muteDuration);
+
+        if (!random.bool(config.mute.probability)) {
+          if (config.mute.enableMessage) {
+            const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
+            await autoRecallMessage(session, message);
+          }
+          return handleMute(session, session.userId, muteDuration);
+        }
+        return handleMute(session, targetId, muteDuration);
       }
 
-      // 禁言自己
       return handleMute(session, session.userId, muteDuration);
     });
 
