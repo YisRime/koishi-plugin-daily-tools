@@ -158,3 +158,9 @@ errors:
   plugin_load_failed: "插件加载失败"
   message_send_failed: "消息发送失败"
   like_failed: "点赞失败"
+  config:
+    invalid_range: "区间格式无效：{0}"
+    range_not_covered: "区间必须完整覆盖0到100"
+    range_overlap: "区间{0}和{1}之间存在重叠或空隙"
+    invalid_autolike_time: "自动点赞时间格式无效"
+    invalid_sleep_time: "睡眠结束时间格式无效"

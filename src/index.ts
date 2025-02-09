@@ -133,16 +133,54 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 ])
 
-// 添加配置验证函数
-const validateConfig = (config: Config): boolean => {
+// 修改区间检查辅助函数
+const validateRangeMessages = (ctx: Context, rangeMessages: Record<string, string>): boolean => {
+  const ranges: [number, number][] = [];
+
+  // 解析所有区间
+  for (const range of Object.keys(rangeMessages)) {
+    const [start, end] = range.split('-').map(Number);
+    if (isNaN(start) || isNaN(end) || start > end || start < 0 || end > 100) {
+      ctx.logger.warn(ctx.i18n.define('errors.config.invalid_range', { value: range }));
+      return false;
+    }
+    ranges.push([start, end]);
+  }
+
+  // 按起始位置排序
+  ranges.sort((a, b) => a[0] - b[0]);
+
+  // 检查是否覆盖 0-100
+  if (ranges[0][0] !== 0 || ranges[ranges.length - 1][1] !== 100) {
+    ctx.logger.warn(ctx.i18n.define('errors.config.range_not_covered', {}));
+    return false;
+  }
+
+  // 检查区间是否连续且不重叠
+  for (let i = 1; i < ranges.length; i++) {
+    if (ranges[i][0] !== ranges[i-1][1] + 1) {
+      ctx.logger.warn(ctx.i18n.define('errors.config.range_overlap', { prev: String(ranges[i-1][1]), curr: String(ranges[i][0]) }));
+      return false;
+    }
+  }
+
+  return true;
+};
+
+// 修改配置验证函数
+const validateConfig = (ctx: Context, config: Config): boolean => {
   if (config.autoLikeTime && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(config.autoLikeTime)) {
-    console.error('Invalid autoLikeTime format');
+    ctx.logger.warn(ctx.i18n.define('errors.config.invalid_autolike_time', {}));
     return false;
   }
 
   if (config.sleep.type === SleepMode.UNTIL &&
       !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(config.sleep.until)) {
-    console.error('Invalid sleep until time format');
+    ctx.logger.warn(ctx.i18n.define('errors.config.invalid_sleep_time', {}));
+    return false;
+  }
+
+  if (!validateRangeMessages(ctx, config.rangeMessages)) {
     return false;
   }
 
@@ -151,7 +189,7 @@ const validateConfig = (config: Config): boolean => {
 
 export async function apply(ctx: Context, config: Config) {
   // 配置验证
-  if (!validateConfig(config)) {
+  if (!validateConfig(ctx, config)) {
     throw new Error('Invalid configuration');
   }
 
@@ -191,22 +229,6 @@ export async function apply(ctx: Context, config: Config) {
     }
   };
 
-  // 权限检查函数
-  const checkMutePermission = async (session, targetId: string) => {
-    try {
-      const memberInfo = await session.onebot.getGroupMemberInfo(session.guildId, targetId, true);
-      if (!memberInfo) {
-        throw new Error('commands.mute.messages.target_failed');
-      }
-      if (memberInfo.role === 'owner' || memberInfo.role === 'admin') {
-        throw new Error('commands.mute.messages.target_is_admin');
-      }
-      return true;
-    } catch (error) {
-      throw new Error(error.message || 'commands.mute.messages.target_failed');
-    }
-  };
-
   // 简化后的禁言处理函数
   const handleMute = async (session, targetId: string, duration: number) => {
     try {
@@ -223,7 +245,7 @@ export async function apply(ctx: Context, config: Config) {
       return true;
     } catch (error) {
       console.error(`Mute operation failed for ${targetId}:`, error);
-      throw new Error('commands.mute.messages.target_failed');
+      throw new Error('target_failed');
     }
   };
 
@@ -377,7 +399,39 @@ export async function apply(ctx: Context, config: Config) {
     }
   }
 
-  // 修改的 mute 命令处理
+  // 添加群成员缓存
+  const groupMembersCache = new Map<string, { members: string[], timestamp: number }>();
+  const CACHE_EXPIRE_TIME = 5 * 60 * 1000; // 5分钟缓存过期
+
+  // 优化获取群成员列表函数
+  const getGroupMembers = async (session) => {
+    const cacheKey = `${session.platform}:${session.guildId}`;
+    const now = Date.now();
+    const cached = groupMembersCache.get(cacheKey);
+
+    if (cached && (now - cached.timestamp) < CACHE_EXPIRE_TIME) {
+      return cached.members;
+    }
+
+    const members = (await session.onebot.getGroupMemberList(session.guildId))
+      .map(m => m.user_id.toString())
+      .filter(id => id !== session.selfId);
+
+    groupMembersCache.set(cacheKey, { members, timestamp: now });
+    return members;
+  };
+
+  // 优化权限检查函数，使用缓存的成员信息
+  const checkMutePermission = async (session, targetId: string | number) => {
+    try {
+      const memberInfo = await session.onebot.getGroupMemberInfo(session.guildId, String(targetId), false);
+      return memberInfo.role !== 'owner' && memberInfo.role !== 'admin';
+    } catch {
+      return false;
+    }
+  };
+
+  // 修改 mute 命令处理
   ctx.command('mute [duration:number]')
     .option('u', '-u <target:text>')
     .option('r', '-r')
@@ -403,10 +457,11 @@ export async function apply(ctx: Context, config: Config) {
 
       try {
         if (options?.r) {
-          // 随机禁言处理
-          const members = (await session.onebot.getGroupMemberList(session.guildId))
-            .map(m => m.user_id.toString())
-            .filter(id => id !== session.selfId && id !== session.userId);
+          // 并行获取群成员列表和权限检查
+          const [members] = await Promise.all([
+            getGroupMembers(session),
+            checkMutePermission(session, session.userId)
+          ]);
 
           if (!members.length) throw new Error('no_valid_members');
 
@@ -415,24 +470,26 @@ export async function apply(ctx: Context, config: Config) {
               const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
               await autoRecallMessage(session, message);
             }
-            await checkMutePermission(session, session.userId);
             await handleMute(session, session.userId, muteDuration);
             await sendMuteResultMessage(session, session.userId, muteDuration);
             return;
           }
 
           const targetId = random.pick(members);
-          await checkMutePermission(session, targetId);
-          await handleMute(session, targetId, muteDuration);
-          await sendMuteResultMessage(session, targetId, muteDuration);
+          // 并行执行权限检查和禁言操作
+          await Promise.all([
+            checkMutePermission(session, String(targetId)).then(canMute => {
+              if (!canMute) throw new Error('target_is_admin');
+            }),
+            handleMute(session, String(targetId), muteDuration)
+          ]);
+          await sendMuteResultMessage(session, String(targetId), muteDuration);
           return;
         } else if (options?.u) {
-          // 指定用户禁言处理
           const parsedUser = h.parse(options.u)[0];
           const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
 
-          if (!targetId) {
-            await checkMutePermission(session, session.userId);
+          if (!targetId || targetId === session.userId) {
             await handleMute(session, session.userId, muteDuration);
             await sendMuteResultMessage(session, session.userId, muteDuration);
             return;
@@ -443,20 +500,23 @@ export async function apply(ctx: Context, config: Config) {
               const message = await session.send(session.text('commands.mute.messages.probability_failed_self'));
               await autoRecallMessage(session, message);
             }
-            await checkMutePermission(session, session.userId);
             await handleMute(session, session.userId, muteDuration);
             await sendMuteResultMessage(session, session.userId, muteDuration);
             return;
           }
 
-          await checkMutePermission(session, targetId);
-          await handleMute(session, targetId, muteDuration);
+          // 并行执行权限检查和禁言操作
+          await Promise.all([
+            checkMutePermission(session, targetId).then(canMute => {
+              if (!canMute) throw new Error('target_is_admin');
+            }),
+            handleMute(session, targetId, muteDuration)
+          ]);
           await sendMuteResultMessage(session, targetId, muteDuration);
           return;
         }
 
         // 自我禁言处理
-        await checkMutePermission(session, session.userId);
         await handleMute(session, session.userId, muteDuration);
         await sendMuteResultMessage(session, session.userId, muteDuration);
       } catch (error) {
