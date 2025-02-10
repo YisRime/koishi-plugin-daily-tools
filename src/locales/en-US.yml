@@ -2,30 +2,32 @@ sleepconfig:
   $desc: "Sleep Configuration"
   sleep:
     type:
-      $desc: "Sleep Mode"
+      $desc: "Mute Mode"
       $inner:
         - "Fixed Duration"
-        - "Until Specified Time"
+        - "Specified Time"
         - "Random Duration"
-    duration: "Mute Duration (minutes)"
+    duration: "Mute Duration (hours)"
     until: "Mute End Time (HH:MM)"
-    min: "Minimum Mute Duration (minutes)"
-    max: "Maximum Mute Duration (minutes)"
+    min: "Minimum Mute Duration (hours)"
+    max: "Maximum Mute Duration (hours)"
 
 autolikeconfig:
-  $desc: "Auto-Like Configuration"
-  autoLikeList:
-    $desc: "Auto-Like Targets"
-    $inner: "Target QQ Numbers"
-  autoLikeTime:
-    $desc: "Auto-Like Time (HH:MM)"
-    $inner: "Daily Like Time (HH:MM)"
+  $desc: "Like Configuration"
+  enabled:
+    $desc: "Enable Auto Like"
+  list:
+    $desc: "Auto Like Targets List"
+    $inner: "Target QQ"
+  time:
+    $desc: "Scheduled Like Time (HH:MM)"
+    $inner: "Daily like time (HH:MM)"
   notifyAccount:
     $desc: "Admin Account"
-    $inner: "For receiving like notifications and as like recipient"
-  enableLikeReminder:
-    $desc: "Enable Owner Like Reminder"
-    $inner: "When enabled, reminds to like the owner after completion"
+    $inner: "For receiving like notifications and like reciprocation"
+  enableReminder:
+    $desc: "Enable Like Reminder"
+    $inner: "Remind to like the owner after completion when enabled"
 
 jrrpconfig:
   $desc: "Daily Luck Configuration"
@@ -35,6 +37,8 @@ jrrpconfig:
       - "Modulo Algorithm"
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
+  specialPassword:
+    $desc: "Special Mode Password"
   rangeMessages:
     $desc: "Luck Range Messages (max 10)"
     $inner: "Set messages for different ranges"
@@ -58,31 +62,32 @@ muteconfig:
     maxDuration: "Maximum Mute Duration (minutes)"
     maxAllowedDuration: "Maximum Allowed Mute Duration (minutes)"
     enableMuteOthers: "Allow Muting Others"
-    probability: "Success Probability for Muting Others"
+    probability: "Probability of Muting Others"
     enableMessage: "Enable Mute Notification Messages"
 
 commands:
   sleep:
-    description: "Sleep Mode"
+    description: "Refined Sleep"
     usage: |-
       Automatically mute for specified duration
-      Supports three modes: Fixed Duration, Until Time, Random Duration
+      Supports three modes: Fixed Duration, Specified Time, Random Duration
     examples: |-
-      sleep
+      refined sleep
     messages:
       guild_only: "This feature is only available in group chats"
       success: "Good night, sweet dreams!"
-      failed: "Sleep mode failed, please check bot permissions"
+      failed: "Sleep failed, please check if bot has permissions"
 
   zanwo:
-    description: "Auto Like Me"
-    usage: "Send command to receive likes from bot (max 50 likes)"
+    description: "Auto Like for You"
+    usage: "Send command to receive likes from bot, max 50 likes"
     examples: |-
       zanwo
       like me
     messages:
-      success: "Likes sent, remember to like my owner ({0})~"
-      success_no_reminder: "Likes sent, remember to like my owner~"
+      success: "Likes completed, remember to like my owner ({0})~"
+      success_no_reminder: "Likes completed, remember to like my owner~"
+      like_failed: "Like failed"
 
   mute:
     description: "Mute Self or Others"
@@ -96,68 +101,64 @@ commands:
       errors:
         guild_only: "This feature is only available in group chats"
         no_valid_members: "No valid members available for muting"
-        target_failed: "Mute failed, insufficient permissions"
+        target_not_found: "Specified user not found"
         duration_too_long: "Mute duration exceeds limit ({0} minutes)"
       notify:
         self_muted: "You have been muted for {0} minutes {1} seconds"
         target_muted: "{0} has been muted for {1} minutes {2} seconds"
-        others_disabled: "Muting others is disabled"
+        others_disabled: "Muting others has been disabled"
 
   jrrp:
     description: "Daily Luck"
     usage: |-
-      Check your daily luck, supports specified date
+      Check your daily luck, supports specific dates
     examples: |-
       jrrp -d 1970-01-01
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
-      result: "{1} Your luck today is: {0}"
+      result: "{1} Your luck value today is: {0}"
       prompt: "Would you like to check your luck today?"
       cancel: "Alright, have a nice day!"
       error: "Error calculating daily luck"
       range:
-        1: "...(on a scale of 100)"
+        1: "...(It's percentile by the way)"
         2: "?! No way..."
         3: ". Ugh..."
         4: "! Barely acceptable...?"
         5: ". Not bad, not bad."
-        6: ". Pretty lucky today!"
-        7: "! Excellent!"
-        8: "! Almost perfect..."
-        9: "Spare"
-        10: "Spare"
+        6: ". Lucky day today!"
+        7: "! Excellent reviews!"
+        8: "! Almost hit 100..."
+        9: "Backup"
+        10: "Backup"
       special:
-        1: "! Terrible luck!"
-        2: "! 50-50..."
+        1: "! Terrible reviews!"
+        2: "! Fifty-fifty..."
         3: "! 100! 100!!!!"
-        4: "Spare"
-        5: "Spare"
-        6: "Spare"
-        7: "Spare"
-        8: "Spare"
-        9: "Spare"
-        10: "Spare"
+        4: "Backup"
+        5: "Backup"
+        6: "Backup"
+        7: "Backup"
+        8: "Backup"
+        9: "Backup"
+        10: "Backup"
       date:
         1: "Happy New Year!"
         2: "Merry Christmas!"
-        3: "Spare"
-        4: "Spare"
-        5: "Spare"
-        6: "Spare"
-        7: "Spare"
-        8: "Spare"
-        9: "Spare"
-        10: "Spare"
+        3: "Backup"
+        4: "Backup"
+        5: "Backup"
+        6: "Backup"
+        7: "Backup"
+        8: "Backup"
+        9: "Backup"
+        10: "Backup"
+      special_mode:
+        invalid_code: "Invalid code format, should be 1111-1111-1111-1111 (0-9/A-F)"
+        bind_success: "Identification code bound successfully!"
 
 errors:
-  invalid_session: "Invalid session"
+  invalid_session: "Invalid session information"
   invalid_time: "Invalid time format"
   invalid_date: "Invalid date format"
-  like_failed: "Like failed"
-  config:
-    invalid_range: "Invalid range format: {0}"
-    range_not_covered: "Range must fully cover 0 to 100"
-    range_overlap: "Overlap or gap between ranges {0} and {1}"
-    invalid_autolike_time: "Invalid auto-like time format"
-    invalid_sleep_time: "Invalid sleep end time format"

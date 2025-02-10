@@ -5,45 +5,23 @@ sleepconfig:
       $desc: "禁言模式"
       $inner:
         - "固定时长"
-        - "指定时间"
+        - "截止时间"
         - "随机时长"
-    duration: "禁言时长（分钟）"
-    until: "禁言结束时间（HH:MM）"
-    min: "最短禁言时长（分钟）"
-    max: "最长禁言时长（分钟）"
+    duration: "固定禁言时长（小时）"
+    until: "禁言截止时间（HH:MM）"
+    min: "最短随机时长（小时）"
+    max: "最长随机时长（小时）"
 
 autolikeconfig:
   $desc: "点赞配置"
-  autoLikeList:
-    $desc: "自动点赞目标"
+  enabled:
+    $desc: "启用自动点赞"
+  list:
+    $desc: "自动点赞列表"
     $inner: "目标QQ"
-  autoLikeTime:
-    $desc: "定时点赞时间（HH:MM）"
-    $inner: "每日点赞时间（HH:MM）"
-  notifyAccount:
-    $desc: "管理员账号"
-    $inner: "用于接收点赞通知和作为点赞回报对象"
-  enableLikeReminder:
-    $desc: "是否提示赞主人"
-    $inner: "开启后会在点赞完成时提示需要赞主人"
-
-jrrpconfig:
-  $desc: "今日人品配置"
-  choice:
-    $desc: "算法选择"
-    $inner:
-      - "取模算法"
-      - "正态分布算法"
-      - "线性同余算法"
-  rangeMessages:
-    $desc: "人品区间配置（最多10条）"
-    $inner: "设置不同区间对应提示"
-  specialMessages:
-    $desc: "特定数值提示（最多10条）"
-    $inner: "设置特定数值对应提示"
-  holidayMessages:
-    $desc: "特定日期提示（最多10条）"
-    $inner: "设置特定日期对应提示"
+  time: "定时点赞时间（HH:MM）"
+  notifyAccount: "管理员/通知账号"
+  enableReminder: "启用通知和点赞主人提示"
 
 muteconfig:
   $desc: "随机禁言配置"
@@ -54,12 +32,32 @@ muteconfig:
         - "固定时长"
         - "随机时长"
     duration: "固定禁言时长（分钟）"
-    minDuration: "最小禁言时长（分钟）"
-    maxDuration: "最大禁言时长（分钟）"
+    minDuration: "最小随机时长（分钟）"
+    maxDuration: "最大随机时长（分钟）"
     maxAllowedDuration: "最大允许禁言时长（分钟）"
-    enableMuteOthers: "是否允许禁言他人"
+    enableMessage: "启用禁言提示消息"
+    enableMuteOthers: "允许禁言他人"
     probability: "禁言他人成功概率"
-    enableMessage: "是否启用禁言提示消息"
+
+jrrpconfig:
+  $desc: "今日人品配置"
+  choice:
+    $desc: "算法选择"
+    $inner:
+      - "取模算法"
+      - "正态分布算法"
+      - "线性同余算法"
+  specialPassword:
+    $desc: "解锁密码（特殊模式）"
+  rangeMessages:
+    $desc: "人品区间配置（最多10项）"
+    $inner: "请去本地化页面修改文本，确保范围覆盖0-100"
+  specialMessages:
+    $desc: "特定数值提示（最多10项）"
+    $inner: "请去本地化页面修改文本"
+  holidayMessages:
+    $desc: "特定日期提示（最多10项）"
+    $inner: "请去本地化页面修改文本，确保日期符合[MM-DD]格式"
 
 commands:
   sleep:
@@ -83,6 +81,7 @@ commands:
     messages:
       success: "点赞完成，记得赞我主人({0})哦~"
       success_no_reminder: "点赞完成，记得赞我主人哦~"
+      like_failed: "点赞失败"
 
   mute:
     description: "禁言自己或他人"
@@ -121,7 +120,7 @@ commands:
         2: "？！不会吧……"
         3: "。呜……"
         4: "！勉强还行吧……？"
-        5: "。还行啦，还行啦。"
+        5: "！还行啦，还行啦。"
         6: "。今天运气不错呢！"
         7: "！好评如潮！"
         8: "！差点就到 100 了呢……"
@@ -149,15 +148,11 @@ commands:
         8: "备用"
         9: "备用"
         10: "备用"
+      special_mode:
+        invalid_code: "识别码格式错误，格式为 1111-1111-1111-1111"
+        bind_success: "识别码绑定成功！"
 
 errors:
   invalid_session: "无效的会话信息"
   invalid_time: "无效的时间格式"
   invalid_date: "无效的日期格式"
-  like_failed: "点赞失败"
-  config:
-    invalid_range: "区间格式无效：{0}"
-    range_not_covered: "区间必须完整覆盖0到100"
-    range_overlap: "区间{0}和{1}之间存在重叠或空隙"
-    invalid_autolike_time: "自动点赞时间格式无效"
-    invalid_sleep_time: "睡眠结束时间格式无效"
