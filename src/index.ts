@@ -186,7 +186,7 @@ class ConfigValidator {
 
 // 整合工具函数为一个统一的工具对象
 const utils = {
-  // 消息自动撤回处理
+  // 保留单个统一的自动撤回处理函数
   async autoRecall(session, message, delay = 10000) {
     if (!message) return;
     setTimeout(async () => {
@@ -206,20 +206,7 @@ const utils = {
     }, delay);
   },
 
-  // 简化的消息发送和撤回
-  async sendAndRecall(session, text: string, params: any[] = [], delay = 10000) {
-    try {
-      const message = await session.send(session.text(text, params));
-      if (message) {
-        const msgId = typeof message === 'string' ? message : message?.id;
-        await this.autoRecall(session, msgId, delay);
-      }
-      return message;
-    } catch (e) {
-      console.error('Failed to send or recall message:', e);
-      return null;
-    }
-  },
+  // 删除 sendAndRecall 函数，因为我们直接使用 autoRecall
 
   // 带缓存的用户名称获取
   userCache: new Map<string, string>(),
@@ -454,7 +441,8 @@ export async function apply(ctx: Context, config: Config) {
     .action(async ({ session }) => {
       try {
         if (!session?.guildId) {
-          await utils.sendAndRecall(session, 'commands.sleep.messages.guild_only');
+          const message = await session.send(session.text('commands.sleep.messages.guild_only'));
+          await utils.autoRecall(session, message);
           return;
         }
 
@@ -489,7 +477,8 @@ export async function apply(ctx: Context, config: Config) {
         // 移除对晚安消息的自动撤回
         return session.text('commands.sleep.messages.success');
       } catch (error) {
-        await utils.sendAndRecall(session, 'commands.sleep.messages.failed');
+        const message = await session.send(session.text('commands.sleep.messages.failed'));
+        await utils.autoRecall(session, message);
         return;
       }
     });
@@ -498,7 +487,8 @@ export async function apply(ctx: Context, config: Config) {
     .alias('赞我')
     .action(async ({ session }) => {
       if (!session?.userId) {
-        await utils.sendAndRecall(session, 'errors.invalid_session');
+        const message = await session.send(session.text('errors.invalid_session'));
+        await utils.autoRecall(session, message);
         return;
       }
 
@@ -512,22 +502,17 @@ export async function apply(ctx: Context, config: Config) {
           ));
           successfulLikes = 5;
 
-          await utils.sendAndRecall(
-            session,
+          const message = await session.send(
             config.enableReminder
-              ? 'commands.zanwo.messages.success'
-              : 'commands.zanwo.messages.success_no_reminder',
-            [config.notifyAccount]
+              ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
+              : session.text('commands.zanwo.messages.success_no_reminder')
           );
+          await utils.autoRecall(session, message);
           return null;
         } catch (error) {
           if (retry === maxRetries - 1) {
-            // 直接使用 utils.sendAndRecall 处理失败消息
-            await utils.sendAndRecall(
-              session,
-              'commands.zanwo.messages.like_failed',
-              []
-            );
+            const message = await session.send(session.text('commands.zanwo.messages.like_failed'));
+            await utils.autoRecall(session, message);
             return null;
           }
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -540,17 +525,20 @@ export async function apply(ctx: Context, config: Config) {
     .option('r', '-r')
     .action(async ({ session, options }, duration) => {
       if (!session?.guildId) {
-        await utils.sendAndRecall(session, 'commands.mute.messages.errors.guild_only');
+        const message = await session.send(session.text('commands.mute.messages.errors.guild_only'));
+        await utils.autoRecall(session, message);
         return;
       }
 
       if (!config.mute.enableMuteOthers && (options?.u || options?.r)) {
-        await utils.sendAndRecall(session, 'commands.mute.messages.notify.others_disabled');
+        const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'));
+        await utils.autoRecall(session, message);
         return;
       }
 
       if (duration && duration > config.mute.maxAllowedDuration) {
-        await utils.sendAndRecall(session, 'commands.mute.messages.errors.duration_too_long', [config.mute.maxAllowedDuration]);
+        const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.mute.maxAllowedDuration]));
+        await utils.autoRecall(session, message);
         return;
       }
 
@@ -566,7 +554,8 @@ export async function apply(ctx: Context, config: Config) {
           .map(m => String(m.user_id));
 
         if (!members.length) {
-          await utils.sendAndRecall(session, 'commands.mute.messages.no_valid_members');
+          const message = await session.send(session.text('commands.mute.messages.no_valid_members'));
+          await utils.autoRecall(session, message);
           return;
         }
 
@@ -608,7 +597,8 @@ export async function apply(ctx: Context, config: Config) {
     .action(async ({ session, options }) => {
       // 首先确保会话有效
       if (!session?.userId) {
-        await utils.sendAndRecall(session, 'errors.invalid_session');
+        const message = await session.send(session.text('errors.invalid_session'));
+        await utils.autoRecall(session, message);
         return;
       }
 
@@ -616,7 +606,8 @@ export async function apply(ctx: Context, config: Config) {
       if ('g' in options && options.g !== null) {
         // 验证输入范围是否在0-100之间
         if (options.g < 0 || options.g > 100) {
-          await utils.sendAndRecall(session, 'commands.jrrp.messages.invalid_number');
+          const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
+          await utils.autoRecall(session, message);
           return;
         }
 
@@ -643,7 +634,8 @@ export async function apply(ctx: Context, config: Config) {
           daysChecked++;
         }
 
-        await utils.sendAndRecall(session, 'commands.jrrp.messages.not_found', [options.g]);
+        const message = await session.send(session.text('commands.jrrp.messages.not_found', [options.g]));
+        await utils.autoRecall(session, message);
         return;
       }
 
@@ -738,7 +730,8 @@ export async function apply(ctx: Context, config: Config) {
 
         const date = parseDate(options.d, targetDate);
         if (!date) {
-          await utils.sendAndRecall(session, 'errors.invalid_date');
+          const message = await session.send(session.text('errors.invalid_date'));
+          await utils.autoRecall(session, message);
           return;
         }
         targetDate = date;
@@ -811,7 +804,8 @@ export async function apply(ctx: Context, config: Config) {
         return;
       } catch (error) {
         console.error('Daily fortune calculation failed:', error);
-        await utils.sendAndRecall(session, 'commands.jrrp.messages.error', []);
+        const message = await session.send(session.text('commands.jrrp.messages.error', []));
+        await utils.autoRecall(session, message);
         return;
       }
     });
