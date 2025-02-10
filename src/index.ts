@@ -528,7 +528,8 @@ export async function apply(ctx: Context, config: Config) {
     .action(async ({ session, options }) => {
       // 首先确保会话有效
       if (!session?.userId) {
-        await utils.sendAndRecall(session, 'errors.invalid_session');
+        const message = await session.send(session.text('errors.invalid_session'));
+        await utils.autoRecall(session, message);
         return;
       }
 
@@ -536,21 +537,41 @@ export async function apply(ctx: Context, config: Config) {
       let targetDate = new Date();
       if (options?.d) {
         const parseDate = (dateStr: string, defaultDate: Date): Date | null => {
-          const fullMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-          const shortMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})$/);
+          // 统一格式：将.和/转换为-，处理多个分隔符
+          const normalizedDate = dateStr.replace(/[./]/g, '-').replace(/-+/g, '-');
+
+          // 匹配完整日期：YYYY-MM-DD、YYYY-M-D
+          const fullMatch = normalizedDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+          // 匹配短日期：MM-DD、M-D
+          const shortMatch = normalizedDate.match(/^(\d{1,2})-(\d{1,2})$/);
+
           if (fullMatch) {
             const [_, year, month, day] = fullMatch;
-            return new Date(Number(year), Number(month) - 1, Number(day));
+            const date = new Date(Number(year), Number(month) - 1, Number(day));
+            // 验证日期是否有效
+            if (date.getFullYear() === Number(year) &&
+                date.getMonth() === Number(month) - 1 &&
+                date.getDate() === Number(day)) {
+              return date;
+            }
+            return null;
           } else if (shortMatch) {
             const [_, month, day] = shortMatch;
-            return new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
+            const date = new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
+            // 验证日期是否有效
+            if (date.getMonth() === Number(month) - 1 &&
+                date.getDate() === Number(day)) {
+              return date;
+            }
+            return null;
           }
           return null;
         };
 
         const date = parseDate(options.d, targetDate);
         if (!date) {
-          await utils.sendAndRecall(session, 'errors.invalid_date');
+          const message = await session.send(session.text('errors.invalid_date'));
+          await utils.autoRecall(session, message);
           return;
         }
         targetDate = date;
@@ -579,7 +600,8 @@ export async function apply(ctx: Context, config: Config) {
         const monthDay = `${monthStr}-${dayStr}`;
 
         if (config.holidayMessages?.[monthDay]) {
-          const promptMessage = await session.send(session.text(config.holidayMessages[monthDay] + 'commands.jrrp.messages.prompt'));
+          const holidayMessage = session.text(config.holidayMessages[monthDay]);
+          const promptMessage = await session.send(holidayMessage + session.text('commands.jrrp.messages.prompt'));
           await utils.autoRecall(session, promptMessage);
           const response = await session.prompt(10000);
           if (!response) {
@@ -659,7 +681,8 @@ export async function apply(ctx: Context, config: Config) {
         return message;
       } catch (error) {
         console.error('Daily fortune calculation failed:', error);
-        await utils.sendAndRecall(session, 'commands.jrrp.messages.error');
+        const message = await session.send(session.text('commands.jrrp.messages.error'));
+        await utils.autoRecall(session, message);
         return;
       }
     });

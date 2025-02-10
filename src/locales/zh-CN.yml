@@ -149,7 +149,7 @@ commands:
         9: "备用"
         10: "备用"
       special_mode:
-        invalid_code: "识别码格式错误，格式为 1111-1111-1111-1111"
+        invalid_code: "识别码格式错误！"
         bind_success: "识别码绑定成功！"
         unbind_success: "识别码解绑成功！"
 
