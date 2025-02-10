@@ -189,20 +189,36 @@ const utils = {
   // 消息自动撤回处理
   async autoRecall(session, message, delay = 10000) {
     if (!message) return;
-    setTimeout(() => {
-      if (Array.isArray(message)) {
-        message.forEach(msg => msg?.id && session.bot.deleteMessage(session.channelId, msg.id));
-      } else if (message?.id) {
-        session.bot.deleteMessage(session.channelId, message.id);
+    setTimeout(async () => {
+      try {
+        if (Array.isArray(message)) {
+          await Promise.all(message.map(msg => {
+            const msgId = typeof msg === 'string' ? msg : msg?.id;
+            if (msgId) return session.bot.deleteMessage(session.channelId, msgId);
+          }));
+        } else {
+          const msgId = typeof message === 'string' ? message : message?.id;
+          if (msgId) await session.bot.deleteMessage(session.channelId, msgId);
+        }
+      } catch (e) {
+        console.error('Failed to recall message:', e);
       }
     }, delay);
   },
 
   // 简化的消息发送和撤回
   async sendAndRecall(session, text: string, params: any[] = [], delay = 10000) {
-    const message = await session.send(session.text(text, params));
-    await this.autoRecall(session, message, delay);
-    return message;
+    try {
+      const message = await session.send(session.text(text, params));
+      if (message) {
+        const msgId = typeof message === 'string' ? message : message?.id;
+        await this.autoRecall(session, msgId, delay);
+      }
+      return message;
+    } catch (e) {
+      console.error('Failed to send or recall message:', e);
+      return null;
+    }
   },
 
   // 带缓存的用户名称获取
@@ -605,7 +621,7 @@ export async function apply(ctx: Context, config: Config) {
           if (score === options.g) {
             session.send(session.text('commands.jrrp.messages.found_date', [
               options.g,
-              `${currentDate.getFullYear().toString().slice(-2)}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${String(currentDate.getDate()).padStart(2, '0')}`
+              `${currentDate.getFullYear().toString().slice(-2)}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`
             ]));
             return;
           }
@@ -619,23 +635,32 @@ export async function apply(ctx: Context, config: Config) {
 
       // 处理绑定识别码，确保错误消息自动撤回
       if ('b' in options) {
-        if (!options.b) {
-          const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
-          await utils.autoRecall(session, message);
-          jrrpSpecial.removeSpecialCode(session.userId);
-          return;
-        }
+        try {
+          // 撤回命令消息
+          if (session.messageId) {
+            await session.bot.deleteMessage(session.channelId, session.messageId);
+          }
 
-        if (!jrrpSpecial.validateSpecialCode(options.b)) {
-          const message = await session.send(session.text('commands.jrrp.messages.special_mode.invalid_code'));
-          await utils.autoRecall(session, message);
-          return;
-        }
+          if (!options.b) {
+            const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
+            await utils.autoRecall(session, message);
+            jrrpSpecial.removeSpecialCode(session.userId);
+            return;
+          }
 
-        const message = await session.send(session.text('commands.jrrp.messages.special_mode.bind_success'));
-        await utils.autoRecall(session, message);
-        jrrpSpecial.bindSpecialCode(session.userId, options.b);
-        return;
+          if (!jrrpSpecial.validateSpecialCode(options.b)) {
+            const message = await session.send(session.text('commands.jrrp.messages.special_mode.invalid_code'));
+            await utils.autoRecall(session, message);
+            return;
+          }
+
+          const message = await session.send(session.text('commands.jrrp.messages.special_mode.bind_success'));
+          await utils.autoRecall(session, message);
+          jrrpSpecial.bindSpecialCode(session.userId, options.b);
+          return;
+        } catch (e) {
+          console.error('Failed to handle special code binding:', e);
+        }
       }
 
       // 处理日期参数
