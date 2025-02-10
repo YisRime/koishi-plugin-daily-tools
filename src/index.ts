@@ -492,15 +492,11 @@ export async function apply(ctx: Context, config: Config) {
           return null;
         } catch (error) {
           if (retry === maxRetries - 1) {
-            // 修改这里，使用 utils.sendAndRecall 来处理失败消息
+            // 直接使用 utils.sendAndRecall 处理失败消息
             await utils.sendAndRecall(
               session,
-              successfulLikes > 0
-                ? (config.enableReminder
-                  ? 'commands.zanwo.messages.success'
-                  : 'commands.zanwo.messages.success_no_reminder')
-                : 'commands.zanwo.messages.like_failed',
-              [config.notifyAccount]
+              'commands.zanwo.messages.like_failed',
+              []
             );
             return null;
           }
@@ -582,8 +578,7 @@ export async function apply(ctx: Context, config: Config) {
     .action(async ({ session, options }) => {
       // 首先确保会话有效
       if (!session?.userId) {
-        const message = await session.send(session.text('errors.invalid_session'));
-        await utils.autoRecall(session, message);
+        await utils.sendAndRecall(session, 'errors.invalid_session');
         return;
       }
 
@@ -591,7 +586,7 @@ export async function apply(ctx: Context, config: Config) {
       if ('g' in options && options.g !== null) {
         // 验证输入范围是否在0-100之间
         if (options.g < 0 || options.g > 100) {
-          session.send(session.text('commands.jrrp.messages.invalid_number'));
+          await utils.sendAndRecall(session, 'commands.jrrp.messages.invalid_number');
           return;
         }
 
@@ -618,7 +613,7 @@ export async function apply(ctx: Context, config: Config) {
           daysChecked++;
         }
 
-        session.send(session.text('commands.jrrp.messages.not_found', [options.g]));
+        await utils.sendAndRecall(session, 'commands.jrrp.messages.not_found', [options.g]);
         return;
       }
 
@@ -647,20 +642,45 @@ export async function apply(ctx: Context, config: Config) {
       let targetDate = new Date();
       if (options?.d) {
         const parseDate = (dateStr: string, defaultDate: Date): Date | null => {
-          // 统一格式：将.和/转换为-，处理多个分隔符
-          const normalizedDate = dateStr.replace(/[./]/g, '-').replace(/-+/g, '-');
+          // 统一格式：将.和/转换为-，移除所有空白字符
+          const normalizedDate = dateStr.replace(/[\s.\/]/g, '-').replace(/-+/g, '-');
 
           // 匹配完整日期：YYYY-MM-DD、YYYY-M-D
           const fullMatch = normalizedDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+          // 匹配短年份：YY-MM-DD、YY-M-D、YY/M/D等
+          const shortYearMatch = normalizedDate.match(/^(\d{1,2})-(\d{1,2})-(\d{1,2})$/);
           // 匹配短日期：MM-DD、M-D
           const shortMatch = normalizedDate.match(/^(\d{1,2})-(\d{1,2})$/);
 
           if (fullMatch) {
             const [_, year, month, day] = fullMatch;
             const date = new Date(Number(year), Number(month) - 1, Number(day));
-            // 验证日期是否有效
             if (date.getFullYear() === Number(year) &&
                 date.getMonth() === Number(month) - 1 &&
+                date.getDate() === Number(day)) {
+              return date;
+            }
+            return null;
+          } else if (shortYearMatch) {
+            const [_, year, month, day] = shortYearMatch;
+            // 智能处理两位年份
+            let fullYear: number;
+            const yearNum = Number(year);
+            const currentYear = defaultDate.getFullYear();
+            const currentYearLastTwo = currentYear % 100;
+
+            if (yearNum >= 0 && yearNum <= 99) {
+              // 如果年份是0-99之间:
+              // 1. 如果年份大于当前年份的后两位+20，认为是19xx年
+              // 2. 如果年份小于等于当前年份的后两位+20，认为是20xx年
+              const threshold = (currentYearLastTwo + 20) % 100;
+              fullYear = yearNum > threshold ? 1900 + yearNum : 2000 + yearNum;
+            } else {
+              return null;
+            }
+
+            const date = new Date(fullYear, Number(month) - 1, Number(day));
+            if (date.getMonth() === Number(month) - 1 &&
                 date.getDate() === Number(day)) {
               return date;
             }
@@ -668,7 +688,6 @@ export async function apply(ctx: Context, config: Config) {
           } else if (shortMatch) {
             const [_, month, day] = shortMatch;
             const date = new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
-            // 验证日期是否有效
             if (date.getMonth() === Number(month) - 1 &&
                 date.getDate() === Number(day)) {
               return date;
@@ -680,8 +699,7 @@ export async function apply(ctx: Context, config: Config) {
 
         const date = parseDate(options.d, targetDate);
         if (!date) {
-          const message = await session.send(session.text('errors.invalid_date'));
-          await utils.autoRecall(session, message);
+          await utils.sendAndRecall(session, 'errors.invalid_date');
           return;
         }
         targetDate = date;
@@ -754,8 +772,7 @@ export async function apply(ctx: Context, config: Config) {
         return;
       } catch (error) {
         console.error('Daily fortune calculation failed:', error);
-        const message = await session.send(session.text('commands.jrrp.messages.error'));
-        await utils.autoRecall(session, message);
+        await utils.sendAndRecall(session, 'commands.jrrp.messages.error', []);
         return;
       }
     });
