@@ -151,6 +151,7 @@ commands:
       special_mode:
         invalid_code: "识别码格式错误，格式为 1111-1111-1111-1111"
         bind_success: "识别码绑定成功！"
+        unbind_success: "识别码解绑成功！"
 
 errors:
   invalid_session: "无效的会话信息"

@@ -3,31 +3,6 @@ import { Context, Schema, Random, h } from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
 import * as cron from 'koishi-plugin-cron'
 
-// 添加 Date 类型扩展声明
-declare global {
-  interface Date {
-    getDayOfYear(): number;
-  }
-}
-
-// 实现 getDayOfYear 方法
-Date.prototype.getDayOfYear = function() {
-  const start = new Date(this.getFullYear(), 0, 0);
-  const now = new Date(this.valueOf());
-  const diff = now.getTime() - start.getTime();
-  const oneDay = 1000 * 60 * 60 * 24;
-  return Math.floor(diff / oneDay);
-};
-
-// GetHash 函数实现
-function GetHash(str: string): bigint {
-  let hash = BigInt(5381);
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << BigInt(5)) ^ hash ^ BigInt(str.charCodeAt(i))) & ((BigInt(1) << BigInt(64)) - BigInt(1));
-  }
-  return hash ^ BigInt('0xa98f501bc684032f');
-}
-
 // 插件基本信息
 export const name = 'daily-tools'
 export const inject = {
@@ -250,27 +225,104 @@ const utils = {
     const name = user?.name || userId;
     this.userCache.set(cacheKey, name);
     return name;
-  },
-
-  // 特殊码存储相关
-  SPECIAL_CODES_PATH: 'data/special-codes.json',
-  specialCodes: new Map<string, string>(),
-  validateSpecialCode: (code: string) => /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/i.test(code),
-
-  // 日期相关工具
-  parseDate(dateStr: string, defaultDate: Date): Date | null {
-    const fullMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-    const shortMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})$/);
-    if (fullMatch) {
-      const [_, year, month, day] = fullMatch;
-      return new Date(Number(year), Number(month) - 1, Number(day));
-    } else if (shortMatch) {
-      const [_, month, day] = shortMatch;
-      return new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
-    }
-    return null;
-  },
+  }
 };
+
+// 新增 JrrpSpecialMode 类，放在 CommandHandler 之前
+class JrrpSpecialMode {
+  private specialCodes = new Map<string, string>();
+  private readonly SPECIAL_CODES_PATH = 'data/special-codes.json';
+
+  constructor(private ctx: Context) {
+    this.loadSpecialCodes();
+  }
+
+  // 移入 getDayOfYear 实现
+  private getDayOfYear(date: Date): number {
+    const start = new Date(date.getFullYear(), 0, 0);
+    const diff = date.getTime() - start.getTime();
+    const oneDay = 1000 * 60 * 60 * 24;
+    return Math.floor(diff / oneDay);
+  }
+
+  // 移入 GetHash 实现
+  private getHash(str: string): bigint {
+    let hash = BigInt(5381);
+    for (let i = 0; str.length > i; i++) {
+      hash = ((hash << BigInt(5)) ^ hash ^ BigInt(str.charCodeAt(i))) & ((BigInt(1) << BigInt(64)) - BigInt(1));
+    }
+    return hash ^ BigInt('0xa98f501bc684032f');
+  }
+
+  private loadSpecialCodes(): void {
+    try {
+      const fs = require('fs');
+      if (fs.existsSync(this.SPECIAL_CODES_PATH)) {
+        const data = JSON.parse(fs.readFileSync(this.SPECIAL_CODES_PATH, 'utf8'));
+        Object.entries(data).forEach(([userId, code]) => {
+          this.specialCodes.set(userId, code as string);
+        });
+      }
+    } catch (error) {
+      this.ctx.logger.error('Failed to load special codes:', error);
+    }
+  }
+
+  private saveSpecialCodes(): void {
+    const fs = require('fs');
+    const data = Object.fromEntries(this.specialCodes);
+    fs.writeFileSync(this.SPECIAL_CODES_PATH, JSON.stringify(data, null, 2));
+  }
+
+  validateSpecialCode(code: string): boolean {
+    return /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/i.test(code);
+  }
+
+  bindSpecialCode(userId: string, code: string): void {
+    this.specialCodes.set(userId, code.toUpperCase());
+    this.saveSpecialCodes();
+  }
+
+  removeSpecialCode(userId: string): void {
+    this.specialCodes.delete(userId);
+    this.saveSpecialCodes();
+  }
+
+  getSpecialCode(userId: string): string | undefined {
+    return this.specialCodes.get(userId);
+  }
+
+  calculateSpecialJrrp(specialCode: string, date: Date, password: string): number {
+    const dayOfYear = this.getDayOfYear(date);
+    const year = date.getFullYear();
+    const day = date.getDate();
+
+    const hash1 = this.getHash([
+      'asdfgbn',
+      String(dayOfYear),
+      '12#3$45',
+      String(year),
+      'IUY'
+    ].join(''));
+
+    const hash2 = this.getHash([
+      password,
+      specialCode,
+      '0*8&6',
+      String(day),
+      'kjhg'
+    ].join(''));
+
+    const div3 = BigInt(3);
+    const hash1Div3 = hash1 / div3;
+    const hash2Div3 = hash2 / div3;
+
+    const combined = Math.abs(Number(hash1Div3 + hash2Div3) / 527.0);
+    const num = Math.round(combined) % 1001;
+
+    return num >= 970 ? 100 : Math.round((num / 969.0) * 99.0);
+  }
+}
 
 // 简化的命令处理器
 class CommandHandler {
@@ -312,6 +364,7 @@ export async function apply(ctx: Context, config: Config) {
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
   const handler = new CommandHandler(ctx, config);
+  const jrrpSpecial = new JrrpSpecialMode(ctx);
 
   // 命令注册部分
   ctx.command('sleep')
@@ -473,62 +526,52 @@ export async function apply(ctx: Context, config: Config) {
     .option('d', '-d <date>', { type: 'string' })
     .option('b', '-b <code>', { type: 'string' })
     .action(async ({ session, options }) => {
-      // 识别码存储
-      const specialCodes = new Map<string, string>();
-      const SPECIAL_CODES_PATH = 'data/special-codes.json';
-
-      // 加载识别码数据
-      try {
-        const fs = require('fs');
-        if (fs.existsSync(SPECIAL_CODES_PATH)) {
-          const data = JSON.parse(fs.readFileSync(SPECIAL_CODES_PATH, 'utf8'));
-          Object.entries(data).forEach(([userId, code]) => {
-            specialCodes.set(userId, code as string);
-          });
-        }
-      } catch (error) {
-        ctx.logger.error('Failed to load special codes:', error);
+      // 首先确保会话有效
+      if (!session?.userId) {
+        await utils.sendAndRecall(session, 'errors.invalid_session');
+        return;
       }
 
-      // 保存识别码数据
-      const saveSpecialCodes = () => {
-        const fs = require('fs');
-        const data = Object.fromEntries(specialCodes);
-        fs.writeFileSync(SPECIAL_CODES_PATH, JSON.stringify(data, null, 2));
-      };
+      // 处理日期参数
+      let targetDate = new Date();
+      if (options?.d) {
+        const parseDate = (dateStr: string, defaultDate: Date): Date | null => {
+          const fullMatch = dateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+          const shortMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})$/);
+          if (fullMatch) {
+            const [_, year, month, day] = fullMatch;
+            return new Date(Number(year), Number(month) - 1, Number(day));
+          } else if (shortMatch) {
+            const [_, month, day] = shortMatch;
+            return new Date(defaultDate.getFullYear(), Number(month) - 1, Number(day));
+          }
+          return null;
+        };
 
-      // 验证识别码格式
-      const validateSpecialCode = (code: string): boolean => {
-        return /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/i.test(code);
-      };
+        const date = parseDate(options.d, targetDate);
+        if (!date) {
+          await utils.sendAndRecall(session, 'errors.invalid_date');
+          return;
+        }
+        targetDate = date;
+      }
 
-      // 处理绑定识别码
-      if (options?.b) {
-        if (!options.b || !validateSpecialCode(options.b)) {
+      // 处理绑定识别码，移到日期处理之后
+      if ('b' in options) {
+        if (!options.b) {
+          jrrpSpecial.removeSpecialCode(session.userId);
+          return session.text('commands.jrrp.messages.special_mode.unbind_success');
+        }
+
+        if (!jrrpSpecial.validateSpecialCode(options.b)) {
           return session.text('commands.jrrp.messages.special_mode.invalid_code');
         }
 
-        specialCodes.set(session.userId, options.b.toUpperCase());
-        saveSpecialCodes();
+        jrrpSpecial.bindSpecialCode(session.userId, options.b);
         return session.text('commands.jrrp.messages.special_mode.bind_success');
       }
 
       try {
-        if (!session?.userId) {
-          await utils.sendAndRecall(session, 'errors.invalid_session');
-          return;
-        }
-
-        let targetDate = new Date();
-        if (options?.d) {
-          const date = utils.parseDate(options.d, targetDate);
-          if (!date) {
-            await utils.sendAndRecall(session, 'errors.invalid_date');
-            return;
-          }
-          targetDate = date;
-        }
-
         const year = targetDate.getFullYear();
         const monthStr = String(targetDate.getMonth() + 1).padStart(2, '0');
         const dayStr = String(targetDate.getDate()).padStart(2, '0');
@@ -537,7 +580,6 @@ export async function apply(ctx: Context, config: Config) {
 
         if (config.holidayMessages?.[monthDay]) {
           const promptMessage = await session.send(session.text(config.holidayMessages[monthDay] + 'commands.jrrp.messages.prompt'));
-          // 添加对提示消息的自动撤回
           await utils.autoRecall(session, promptMessage);
           const response = await session.prompt(10000);
           if (!response) {
@@ -546,65 +588,57 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const userNickname = session.username || 'User'
-
-        // 32位哈希值计算函数
-        function hashCode(str: string): number {
-          let hash = 5381
-          for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) + hash) + str.charCodeAt(i)
-            hash = hash >>> 0
-          }
-          return hash
-        }
-
         let luckScore: number
         const userDateSeed = `${session.userId}-${currentDateStr}`
 
-        // 检查是否有绑定的识别码
-        const specialCode = specialCodes.get(session.userId);
+        // 检查是否有绑定的识别码，现在可以正确处理特定日期了
+        const specialCode = jrrpSpecial.getSpecialCode(session.userId);
 
         if (specialCode) {
-          // 如果有识别码，使用特殊模式计算
-          luckScore = calculateSpecialJrrp(specialCode, targetDate, config.specialPassword);
+          luckScore = jrrpSpecial.calculateSpecialJrrp(specialCode, targetDate, config.specialPassword);
         } else {
-          // 如果没有识别码，使用选择的算法计算
+          // 将随机数生成相关函数移动到这里
+          const hashCode = (str: string): number => {
+            let hash = 5381;
+            for (let i = 0; i < str.length; i++) {
+              hash = ((hash << 5) + hash) + str.charCodeAt(i);
+              hash = hash >>> 0;
+            }
+            return hash;
+          };
+
           switch (config.choice) {
             case 'basic': {
-              const modLuck = Math.abs(hashCode(userDateSeed)) % 101
-              luckScore = modLuck
-              break
+              luckScore = Math.abs(hashCode(userDateSeed)) % 101;
+              break;
             }
             case 'gaussian': {
-              // 高斯分布算法：生成近似正态分布的随机数
-              function normalRandom(seed: string): number {
-                const hash = hashCode(seed)
-                const randomFactor = Math.sin(hash) * 10000
-                return randomFactor - Math.floor(randomFactor)
-              }
-              function toNormalLuck(random: number): number {
-                const u1 = random
-                const u2 = normalRandom(random.toString())
-                const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2)
-                return Math.min(100, Math.max(0, Math.round(z * 15 + 50)))
-              }
-              const dateWeight = (targetDate.getDay() + 1) / 7
-              const baseRandom = normalRandom(userDateSeed)
-              const weightedRandom = (baseRandom + dateWeight) / 2
-              const normalLuck = toNormalLuck(weightedRandom)
-              luckScore = normalLuck
-              break
+              const normalRandom = (seed: string): number => {
+                const hash = hashCode(seed);
+                const randomFactor = Math.sin(hash) * 10000;
+                return randomFactor - Math.floor(randomFactor);
+              };
+
+              const toNormalLuck = (random: number): number => {
+                const u1 = random;
+                const u2 = normalRandom(random.toString());
+                const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+                return Math.min(100, Math.max(0, Math.round(z * 15 + 50)));
+              };
+
+              const dateWeight = (targetDate.getDay() + 1) / 7;
+              const baseRandom = normalRandom(userDateSeed);
+              const weightedRandom = (baseRandom + dateWeight) / 2;
+              luckScore = toNormalLuck(weightedRandom);
+              break;
             }
             case 'linear': {
-              // 线性同余算法：使用线性同余方法生成伪随机数
-              const lcgSeed = hashCode(userDateSeed)
-              const lcgValue = (lcgSeed * 9301 + 49297) % 233280
-              const lcgRandom = lcgValue / 233280
-              const lcgLuck = Math.floor(lcgRandom * 101)
-              luckScore = lcgLuck
-              break
+              const lcgSeed = hashCode(userDateSeed);
+              luckScore = Math.floor(((lcgSeed * 9301 + 49297) % 233280) / 233280 * 101);
+              break;
             }
             default: {
-              luckScore = Math.abs(hashCode(userDateSeed)) % 101
+              luckScore = Math.abs(hashCode(userDateSeed)) % 101;
             }
           }
         }
@@ -663,40 +697,5 @@ export async function apply(ctx: Context, config: Config) {
         await ctx.bots.first?.sendPrivateMessage(config.notifyAccount, resultMessage);
       }
     });
-  }
-
-  // 在 jrrp 命令实现中，修改特殊模式计算函数
-  function calculateSpecialJrrp(specialCode: string, date: Date, password: string): number {
-    const dayOfYear = date.getDayOfYear();
-    const year = date.getFullYear();
-    const day = date.getDate();
-
-    // 第一个哈希计算
-    const hash1 = GetHash([
-      'asdfgbn',
-      String(dayOfYear),
-      '12#3$45',
-      String(year),
-      'IUY'
-    ].join(''));
-
-    // 第二个哈希计算，使用配置的密码
-    const hash2 = GetHash([
-      password,
-      specialCode,
-      '0*8&6',
-      String(day),
-      'kjhg'
-    ].join(''));
-
-    // 使用 BigInt 处理除法计算
-    const div3 = BigInt(3);
-    const hash1Div3 = hash1 / div3;
-    const hash2Div3 = hash2 / div3;
-
-    const combined = Math.abs(Number(hash1Div3 + hash2Div3) / 527.0);
-    const num = Math.round(combined) % 1001;
-
-    return num >= 970 ? 100 : Math.round((num / 969.0) * 99.0);
   }
 }

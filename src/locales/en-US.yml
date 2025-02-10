@@ -157,6 +157,7 @@ commands:
       special_mode:
         invalid_code: "Invalid code format, should be 1111-1111-1111-1111 (0-9/A-F)"
         bind_success: "Identification code bound successfully!"
+        unbind_success: "Identification code unbound successfully!"
 
 errors:
   invalid_session: "Invalid session information"
