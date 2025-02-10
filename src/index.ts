@@ -363,23 +363,37 @@ class JrrpSpecialMode {
 
 
 async function handleMute(session, targetId: string, duration: number, config: Config) {
-  await session.onebot.setGroupBan(session.guildId, targetId, duration);
-  if (session.messageId) {
-    try {
-      await session.bot.deleteMessage(session.channelId, session.messageId);
-    } catch {}
-  }
-  if (config.mute.enableMessage) {
-    const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
-    const message = await session.send(session.text(
-      targetId === session.userId
+  try {
+    await session.onebot.setGroupBan(session.guildId, targetId, duration);
+
+    // 删除触发命令的消息
+    if (session.messageId) {
+      try {
+        await session.bot.deleteMessage(session.channelId, session.messageId);
+      } catch {}
+    }
+
+    // 只在启用消息提示时发送通知
+    if (config.mute.enableMessage) {
+      const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
+      const isTargetSelf = targetId === session.userId;
+
+      const messageKey = isTargetSelf
         ? 'commands.mute.messages.notify.self_muted'
-        : 'commands.mute.messages.notify.target_muted',
-      [await utils.getUserName(session.ctx, session, targetId), minutes, seconds].filter(Boolean)
-    ));
-    await utils.autoRecall(session, message);
+        : 'commands.mute.messages.notify.target_muted';
+
+      const params = isTargetSelf
+        ? [minutes, seconds]
+        : [await utils.getUserName(session.ctx, session, targetId), minutes, seconds];
+
+      const message = await session.send(session.text(messageKey, params));
+      await utils.autoRecall(session, message);
+    }
+    return true;
+  } catch (error) {
+    console.error('Mute operation failed:', error);
+    return false;
   }
-  return true;
 }
 
 export async function apply(ctx: Context, config: Config) {
