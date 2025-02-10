@@ -231,10 +231,11 @@ const utils = {
 // 新增 JrrpSpecialMode 类，放在 CommandHandler 之前
 class JrrpSpecialMode {
   private specialCodes = new Map<string, string>();
-  private readonly SPECIAL_CODES_PATH = 'data/special-codes.json';
+  private first100Records = new Map<string, boolean>();
+  private readonly JRRP_DATA_PATH = 'data/jrrp.json';
 
   constructor(private ctx: Context) {
-    this.loadSpecialCodes();
+    this.loadData();
   }
 
   // 移入 getDayOfYear 实现
@@ -254,24 +255,45 @@ class JrrpSpecialMode {
     return hash ^ BigInt('0xa98f501bc684032f');
   }
 
-  private loadSpecialCodes(): void {
+  private loadData(): void {
     try {
       const fs = require('fs');
-      if (fs.existsSync(this.SPECIAL_CODES_PATH)) {
-        const data = JSON.parse(fs.readFileSync(this.SPECIAL_CODES_PATH, 'utf8'));
-        Object.entries(data).forEach(([userId, code]) => {
-          this.specialCodes.set(userId, code as string);
-        });
+      if (fs.existsSync(this.JRRP_DATA_PATH)) {
+        const data = JSON.parse(fs.readFileSync(this.JRRP_DATA_PATH, 'utf8'));
+        // 加载识别码
+        if (data.codes) {
+          Object.entries(data.codes).forEach(([userId, code]) => {
+            this.specialCodes.set(userId, code as string);
+          });
+        }
+        // 加载首次100记录
+        if (data.first100) {
+          Object.entries(data.first100).forEach(([userId, hadFirst100]) => {
+            this.first100Records.set(userId, hadFirst100 as boolean);
+          });
+        }
       }
     } catch (error) {
-      this.ctx.logger.error('Failed to load special codes:', error);
+      this.ctx.logger.error('Failed to load JRRP data:', error);
     }
   }
 
-  private saveSpecialCodes(): void {
+  private saveData(): void {
     const fs = require('fs');
-    const data = Object.fromEntries(this.specialCodes);
-    fs.writeFileSync(this.SPECIAL_CODES_PATH, JSON.stringify(data, null, 2));
+    const data = {
+      codes: Object.fromEntries(this.specialCodes),
+      first100: Object.fromEntries(this.first100Records)
+    };
+    fs.writeFileSync(this.JRRP_DATA_PATH, JSON.stringify(data, null, 2));
+  }
+
+  markFirst100(userId: string): void {
+    this.first100Records.set(userId, true);
+    this.saveData();
+  }
+
+  isFirst100(userId: string): boolean {
+    return !this.first100Records.get(userId);
   }
 
   validateSpecialCode(code: string): boolean {
@@ -280,12 +302,12 @@ class JrrpSpecialMode {
 
   bindSpecialCode(userId: string, code: string): void {
     this.specialCodes.set(userId, code.toUpperCase());
-    this.saveSpecialCodes();
+    this.saveData();
   }
 
   removeSpecialCode(userId: string): void {
     this.specialCodes.delete(userId);
-    this.saveSpecialCodes();
+    this.saveData();
   }
 
   getSpecialCode(userId: string): string | undefined {
@@ -324,32 +346,25 @@ class JrrpSpecialMode {
   }
 }
 
-// 简化的命令处理器
-class CommandHandler {
-  constructor(private ctx: Context, private config: Config) {}
 
-  // 处理不同的禁言场景
-  async handleMute(session, targetId: string, duration: number, showMessage = true) {
-    await session.onebot.setGroupBan(session.guildId, targetId, duration);
-    if (session.messageId) {
-      try {
-        await session.bot.deleteMessage(session.channelId, session.messageId);
-      } catch {}
-    }
-    if (showMessage && this.config.mute.enableMessage) {
-      const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
-      const message = await session.send(session.text(
-        targetId === session.userId
-          ? 'commands.mute.messages.notify.self_muted'
-          : 'commands.mute.messages.notify.target_muted',
-        [await utils.getUserName(this.ctx, session, targetId), minutes, seconds].filter(Boolean)
-      ));
-      await utils.autoRecall(session, message);
-    }
-    return true;
+async function handleMute(session, targetId: string, duration: number, config: Config) {
+  await session.onebot.setGroupBan(session.guildId, targetId, duration);
+  if (session.messageId) {
+    try {
+      await session.bot.deleteMessage(session.channelId, session.messageId);
+    } catch {}
   }
-
-  // ... 其他命令处理方法
+  if (config.mute.enableMessage) {
+    const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
+    const message = await session.send(session.text(
+      targetId === session.userId
+        ? 'commands.mute.messages.notify.self_muted'
+        : 'commands.mute.messages.notify.target_muted',
+      [await utils.getUserName(session.ctx, session, targetId), minutes, seconds].filter(Boolean)
+    ));
+    await utils.autoRecall(session, message);
+  }
+  return true;
 }
 
 export async function apply(ctx: Context, config: Config) {
@@ -363,7 +378,6 @@ export async function apply(ctx: Context, config: Config) {
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
-  const handler = new CommandHandler(ctx, config);
   const jrrpSpecial = new JrrpSpecialMode(ctx);
 
   // 命令注册部分
@@ -492,12 +506,12 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         if (!random.bool(config.mute.probability)) {
-          await handler.handleMute(session, session.userId, muteDuration);
+          await handleMute(session, session.userId, muteDuration, config);
           return;
         }
 
         const targetId = random.pick(members);
-        await handler.handleMute(session, targetId, muteDuration);
+        await handleMute(session, targetId, muteDuration, config);
         return;
       }
 
@@ -506,20 +520,20 @@ export async function apply(ctx: Context, config: Config) {
         const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
 
         if (!targetId || targetId === session.userId) {
-          await handler.handleMute(session, session.userId, muteDuration);
+          await handleMute(session, session.userId, muteDuration, config);
           return;
         }
 
         if (!random.bool(config.mute.probability)) {
-          await handler.handleMute(session, session.userId, muteDuration);
+          await handleMute(session, session.userId, muteDuration, config);
           return;
         }
 
-        await handler.handleMute(session, targetId, muteDuration);
+        await handleMute(session, targetId, muteDuration, config);
         return;
       }
 
-      await handler.handleMute(session, session.userId, muteDuration);
+      await handleMute(session, session.userId, muteDuration, config);
     });
 
   ctx.command('jrrp')
@@ -530,6 +544,27 @@ export async function apply(ctx: Context, config: Config) {
       if (!session?.userId) {
         const message = await session.send(session.text('errors.invalid_session'));
         await utils.autoRecall(session, message);
+        return;
+      }
+
+      // 处理绑定识别码，确保错误消息自动撤回
+      if ('b' in options) {
+        if (!options.b) {
+          const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
+          await utils.autoRecall(session, message);
+          jrrpSpecial.removeSpecialCode(session.userId);
+          return;
+        }
+
+        if (!jrrpSpecial.validateSpecialCode(options.b)) {
+          const message = await session.send(session.text('commands.jrrp.messages.special_mode.invalid_code'));
+          await utils.autoRecall(session, message);
+          return;
+        }
+
+        const message = await session.send(session.text('commands.jrrp.messages.special_mode.bind_success'));
+        await utils.autoRecall(session, message);
+        jrrpSpecial.bindSpecialCode(session.userId, options.b);
         return;
       }
 
@@ -577,21 +612,6 @@ export async function apply(ctx: Context, config: Config) {
         targetDate = date;
       }
 
-      // 处理绑定识别码，移到日期处理之后
-      if ('b' in options) {
-        if (!options.b) {
-          jrrpSpecial.removeSpecialCode(session.userId);
-          return session.text('commands.jrrp.messages.special_mode.unbind_success');
-        }
-
-        if (!jrrpSpecial.validateSpecialCode(options.b)) {
-          return session.text('commands.jrrp.messages.special_mode.invalid_code');
-        }
-
-        jrrpSpecial.bindSpecialCode(session.userId, options.b);
-        return session.text('commands.jrrp.messages.special_mode.bind_success');
-      }
-
       try {
         const year = targetDate.getFullYear();
         const monthStr = String(targetDate.getMonth() + 1).padStart(2, '0');
@@ -601,11 +621,13 @@ export async function apply(ctx: Context, config: Config) {
 
         if (config.holidayMessages?.[monthDay]) {
           const holidayMessage = session.text(config.holidayMessages[monthDay]);
-          const promptMessage = await session.send(holidayMessage + session.text('commands.jrrp.messages.prompt'));
+          const promptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'));
           await utils.autoRecall(session, promptMessage);
           const response = await session.prompt(10000);
           if (!response) {
-            return session.text('commands.jrrp.messages.cancel');
+            const message = await session.send(session.text('commands.jrrp.messages.cancel'));
+            await utils.autoRecall(session, message);
+            return;
           }
         }
 
@@ -618,67 +640,99 @@ export async function apply(ctx: Context, config: Config) {
 
         if (specialCode) {
           luckScore = jrrpSpecial.calculateSpecialJrrp(specialCode, targetDate, config.specialPassword);
-        } else {
-          // 将随机数生成相关函数移动到这里
-          const hashCode = (str: string): number => {
-            let hash = 5381;
-            for (let i = 0; i < str.length; i++) {
-              hash = ((hash << 5) + hash) + str.charCodeAt(i);
-              hash = hash >>> 0;
+          // 特殊模式下的0和100特殊处理
+          if (luckScore === 0) {
+            const promptMessage = await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
+            await utils.autoRecall(session, promptMessage);
+            const response = await session.prompt(10000);
+            if (!response) {
+              const message = await session.send(session.text('commands.jrrp.messages.cancel'));
+              await utils.autoRecall(session, message);
+              return;
             }
-            return hash;
-          };
+          }
 
-          switch (config.choice) {
-            case 'basic': {
-              luckScore = Math.abs(hashCode(userDateSeed)) % 101;
-              break;
+          let resultText = session.text('commands.jrrp.messages.result', [luckScore, userNickname]);
+          if (luckScore === 100 && jrrpSpecial.isFirst100(session.userId)) {
+            jrrpSpecial.markFirst100(session.userId);
+            resultText += session.text(config.specialMessages[luckScore]) +
+                         '\n' + session.text('commands.jrrp.messages.special_mode.first_100');
+          } else if (config.specialMessages && luckScore in config.specialMessages) {
+            resultText += session.text(config.specialMessages[luckScore]);
+          } else if (config.rangeMessages) {
+            for (const [range, msg] of Object.entries(config.rangeMessages)) {
+              const [min, max] = range.split('-').map(Number);
+              if (!isNaN(min) && !isNaN(max) && luckScore >= min && luckScore <= max) {
+                resultText += session.text(msg);
+                break;
+              }
             }
-            case 'gaussian': {
-              const normalRandom = (seed: string): number => {
-                const hash = hashCode(seed);
-                const randomFactor = Math.sin(hash) * 10000;
-                return randomFactor - Math.floor(randomFactor);
-              };
+          }
+          await session.send(resultText);
+          return;
+        }
 
-              const toNormalLuck = (random: number): number => {
-                const u1 = random;
-                const u2 = normalRandom(random.toString());
-                const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-                return Math.min(100, Math.max(0, Math.round(z * 15 + 50)));
-              };
+        // 将随机数生成相关函数移动到这里
+        const hashCode = (str: string): number => {
+          let hash = 5381;
+          for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) + hash) + str.charCodeAt(i);
+            hash = hash >>> 0;
+          }
+          return hash;
+        };
 
-              const dateWeight = (targetDate.getDay() + 1) / 7;
-              const baseRandom = normalRandom(userDateSeed);
-              const weightedRandom = (baseRandom + dateWeight) / 2;
-              luckScore = toNormalLuck(weightedRandom);
-              break;
-            }
-            case 'linear': {
-              const lcgSeed = hashCode(userDateSeed);
-              luckScore = Math.floor(((lcgSeed * 9301 + 49297) % 233280) / 233280 * 101);
-              break;
-            }
-            default: {
-              luckScore = Math.abs(hashCode(userDateSeed)) % 101;
-            }
+        switch (config.choice) {
+          case 'basic': {
+            luckScore = Math.abs(hashCode(userDateSeed)) % 101;
+            break;
+          }
+          case 'gaussian': {
+            const normalRandom = (seed: string): number => {
+              const hash = hashCode(seed);
+              const randomFactor = Math.sin(hash) * 10000;
+              return randomFactor - Math.floor(randomFactor);
+            };
+
+            const toNormalLuck = (random: number): number => {
+              const u1 = random;
+              const u2 = normalRandom(random.toString());
+              const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+              return Math.min(100, Math.max(0, Math.round(z * 15 + 50)));
+            };
+
+            const dateWeight = (targetDate.getDay() + 1) / 7;
+            const baseRandom = normalRandom(userDateSeed);
+            const weightedRandom = (baseRandom + dateWeight) / 2;
+            luckScore = toNormalLuck(weightedRandom);
+            break;
+          }
+          case 'linear': {
+            const lcgSeed = hashCode(userDateSeed);
+            luckScore = Math.floor(((lcgSeed * 9301 + 49297) % 233280) / 233280 * 101);
+            break;
+          }
+          default: {
+            luckScore = Math.abs(hashCode(userDateSeed)) % 101;
           }
         }
 
         // 根据分数范围和特殊值生成对应消息
-        let message = session.text('commands.jrrp.messages.result', [luckScore, userNickname]);
+        let resultText = session.text('commands.jrrp.messages.result', [luckScore, userNickname]);
         if (config.specialMessages && luckScore in config.specialMessages) {
-          message += session.text(config.specialMessages[luckScore]);
+          resultText += session.text(config.specialMessages[luckScore]);
         } else if (config.rangeMessages) {
           for (const [range, msg] of Object.entries(config.rangeMessages)) {
             const [min, max] = range.split('-').map(Number);
             if (!isNaN(min) && !isNaN(max) && luckScore >= min && luckScore <= max) {
-              message += session.text(msg);
+              resultText += session.text(msg);
               break;
             }
           }
         }
-        return message;
+        const message = await session.send(resultText);
+        // 结果消息不自动撤回
+        return;
       } catch (error) {
         console.error('Daily fortune calculation failed:', error);
         const message = await session.send(session.text('commands.jrrp.messages.error'));

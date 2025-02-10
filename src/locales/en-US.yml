@@ -5,29 +5,23 @@ sleepconfig:
       $desc: "Mute Mode"
       $inner:
         - "Fixed Duration"
-        - "Specified Time"
+        - "Until Time"
         - "Random Duration"
-    duration: "Mute Duration (hours)"
-    until: "Mute End Time (HH:MM)"
-    min: "Minimum Mute Duration (hours)"
-    max: "Maximum Mute Duration (hours)"
+    duration: "Fixed Mute Duration (hours)"
+    until: "Mute Until (HH:MM)"
+    min: "Minimum Random Duration (hours)"
+    max: "Maximum Random Duration (hours)"
 
 autolikeconfig:
-  $desc: "Like Configuration"
+  $desc: "Auto-like Configuration"
   enabled:
-    $desc: "Enable Auto Like"
+    $desc: "Enable Auto-like"
   list:
-    $desc: "Auto Like Targets List"
+    $desc: "Auto-like List"
     $inner: "Target QQ"
-  time:
-    $desc: "Scheduled Like Time (HH:MM)"
-    $inner: "Daily like time (HH:MM)"
-  notifyAccount:
-    $desc: "Admin Account"
-    $inner: "For receiving like notifications and like reciprocation"
-  enableReminder:
-    $desc: "Enable Like Reminder"
-    $inner: "Remind to like the owner after completion when enabled"
+  time: "Daily Like Time (HH:MM)"
+  notifyAccount: "Admin/Notification Account"
+  enableReminder: "Enable Notifications and Owner Like Reminder"
 
 jrrpconfig:
   $desc: "Daily Luck Configuration"
@@ -38,16 +32,16 @@ jrrpconfig:
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
   specialPassword:
-    $desc: "Special Mode Password"
+    $desc: "Unlock Password (Special Mode)"
   rangeMessages:
-    $desc: "Luck Range Messages (max 10)"
-    $inner: "Set messages for different ranges"
+    $desc: "Luck Range Messages (max 10 items)"
+    $inner: "Please modify text in localization page, ensure ranges cover 0-100"
   specialMessages:
-    $desc: "Special Value Messages (max 10)"
-    $inner: "Set messages for specific values"
+    $desc: "Special Value Messages (max 10 items)"
+    $inner: "Please modify text in localization page"
   holidayMessages:
-    $desc: "Holiday Messages (max 10)"
-    $inner: "Set messages for specific dates"
+    $desc: "Special Date Messages (max 10 items)"
+    $inner: "Please modify text in localization page, ensure dates follow [MM-DD] format"
 
 muteconfig:
   $desc: "Random Mute Configuration"
@@ -58,43 +52,43 @@ muteconfig:
         - "Fixed Duration"
         - "Random Duration"
     duration: "Fixed Mute Duration (minutes)"
-    minDuration: "Minimum Mute Duration (minutes)"
-    maxDuration: "Maximum Mute Duration (minutes)"
+    minDuration: "Minimum Random Duration (minutes)"
+    maxDuration: "Maximum Random Duration (minutes)"
     maxAllowedDuration: "Maximum Allowed Mute Duration (minutes)"
+    enableMessage: "Enable Mute Notification Messages"
     enableMuteOthers: "Allow Muting Others"
     probability: "Probability of Muting Others"
-    enableMessage: "Enable Mute Notification Messages"
 
 commands:
   sleep:
-    description: "Refined Sleep"
+    description: "Sleep Mode"
     usage: |-
       Automatically mute for specified duration
-      Supports three modes: Fixed Duration, Specified Time, Random Duration
+      Supports three modes: Fixed Duration, Until Time, Random Duration
     examples: |-
-      refined sleep
+      sleep
     messages:
       guild_only: "This feature is only available in group chats"
       success: "Good night, sweet dreams!"
-      failed: "Sleep failed, please check if bot has permissions"
+      failed: "Sleep mode failed, please check bot permissions"
 
   zanwo:
-    description: "Auto Like for You"
-    usage: "Send command to receive likes from bot, max 50 likes"
+    description: "Auto-like Service"
+    usage: "Send command to receive likes from bot, limit 50 likes"
     examples: |-
       zanwo
-      like me
+      likeme
     messages:
-      success: "Likes completed, remember to like my owner ({0})~"
-      success_no_reminder: "Likes completed, remember to like my owner~"
-      like_failed: "Like failed"
+      success: "Likes sent, don't forget to like my owner ({0})~"
+      success_no_reminder: "Likes sent, don't forget to like my owner~"
+      like_failed: "Failed to send likes"
 
   mute:
     description: "Mute Self or Others"
     usage: |-
-      -u mute specified user
-      -r mute random user
-      [duration] specify mute duration (minutes)
+      -u Mute specified user
+      -r Mute random user
+      [duration] Specify mute duration (minutes)
     examples: |-
       mute -u/r [1]
     messages:
@@ -111,7 +105,7 @@ commands:
   jrrp:
     description: "Daily Luck"
     usage: |-
-      Check your daily luck, supports specific dates
+      Check your daily luck, supports specified date
     examples: |-
       jrrp -d 1970-01-01
     options:
@@ -122,42 +116,44 @@ commands:
       cancel: "Alright, have a nice day!"
       error: "Error calculating daily luck"
       range:
-        1: "...(It's percentile by the way)"
+        1: "...(on a scale of 100)"
         2: "?! No way..."
         3: ". Ugh..."
         4: "! Barely acceptable...?"
-        5: ". Not bad, not bad."
-        6: ". Lucky day today!"
-        7: "! Excellent reviews!"
-        8: "! Almost hit 100..."
-        9: "Backup"
-        10: "Backup"
+        5: "! Not bad, not bad."
+        6: ". Pretty lucky today!"
+        7: "! Excellent!"
+        8: "! Almost perfect..."
+        9: "Reserved"
+        10: "Reserved"
       special:
-        1: "! Terrible reviews!"
-        2: "! Fifty-fifty..."
+        1: "! Terrible luck!"
+        2: "! Perfectly balanced..."
         3: "! 100! 100!!!!"
-        4: "Backup"
-        5: "Backup"
-        6: "Backup"
-        7: "Backup"
-        8: "Backup"
-        9: "Backup"
-        10: "Backup"
+        4: "Reserved"
+        5: "Reserved"
+        6: "Reserved"
+        7: "Reserved"
+        8: "Reserved"
+        9: "Reserved"
+        10: "Reserved"
       date:
         1: "Happy New Year!"
         2: "Merry Christmas!"
-        3: "Backup"
-        4: "Backup"
-        5: "Backup"
-        6: "Backup"
-        7: "Backup"
-        8: "Backup"
-        9: "Backup"
-        10: "Backup"
+        3: "Reserved"
+        4: "Reserved"
+        5: "Reserved"
+        6: "Reserved"
+        7: "Reserved"
+        8: "Reserved"
+        9: "Reserved"
+        10: "Reserved"
       special_mode:
-        invalid_code: "Invalid code format, should be 1111-1111-1111-1111 (0-9/A-F)"
+        invalid_code: "Invalid identification code!"
         bind_success: "Identification code bound successfully!"
         unbind_success: "Identification code unbound successfully!"
+        first_100: "Hidden theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
+        zero_prompt: "Before viewing results, please agree to the following additional terms:\n1. I acknowledge and understand that PCL2's daily luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as computer damage) caused by using this software.\n(y/n)"
 
 errors:
   invalid_session: "Invalid session information"
