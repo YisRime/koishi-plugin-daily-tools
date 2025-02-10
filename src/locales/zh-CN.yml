@@ -115,6 +115,10 @@ commands:
       prompt: "你要看看今天的人品吗？"
       cancel: "好的，祝您今天愉快！"
       error: "计算今日人品时出错"
+      found_date: "你的下一个{0}分将出现在{1}"
+      not_found: "在未来一年内没有找到{0}分"
+      future_score: "{0}天后（{1}）的人品值是{2}分"
+      invalid_number: "请输入0-100之间的整数"
       range:
         1: "……（是百分制哦）"
         2: "？！不会吧……"
@@ -156,6 +160,5 @@ commands:
         zero_prompt: "在查看结果前，请先同意以下附加使用条款：\n1. 我知晓并了解 PLC2 的今日人品功能完全没有出 Bug。\n2. PLC2 不对使用本软件所间接造成的一切财产损失（如砸电脑等）等负责。\n（y/n）"
 
 errors:
-  invalid_session: "无效的会话信息"
   invalid_time: "无效的时间格式"
   invalid_date: "无效的日期格式"

@@ -115,6 +115,10 @@ commands:
       prompt: "Would you like to check your luck today?"
       cancel: "Alright, have a nice day!"
       error: "Error calculating daily luck"
+      found_date: "Your next {0} points will appear on {1}"
+      not_found: "No {0} points found in the next year"
+      future_score: "Your luck value in {0} days ({1}) will be {2}"
+      invalid_number: "Please enter an integer between 0 and 100"
       range:
         1: "...(on a scale of 100)"
         2: "?! No way..."
@@ -156,6 +160,5 @@ commands:
         zero_prompt: "Before viewing results, please agree to the following additional terms:\n1. I acknowledge and understand that PCL2's daily luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as computer damage) caused by using this software.\n(y/n)"
 
 errors:
-  invalid_session: "Invalid session information"
   invalid_time: "Invalid time format"
   invalid_date: "Invalid date format"

@@ -225,6 +225,16 @@ const utils = {
     const name = user?.name || userId;
     this.userCache.set(cacheKey, name);
     return name;
+  },
+
+  // 添加全局 hashCode 函数
+  hashCode(str: string): number {
+    let hash = 5381;
+    for (let i = 0; str.length; i++) {
+      hash = ((hash << 5) + hash) + str.charCodeAt(i);
+      hash = hash >>> 0;
+    }
+    return hash;
   }
 };
 
@@ -379,6 +389,45 @@ export async function apply(ctx: Context, config: Config) {
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
   const jrrpSpecial = new JrrpSpecialMode(ctx);
+
+  // 添加计算分数的统一函数
+  function calculateScore(userDateSeed: string, date: Date, specialCode: string | undefined): number {
+    if (specialCode) {
+      return jrrpSpecial.calculateSpecialJrrp(specialCode, date, config.specialPassword);
+    }
+
+    switch (config.choice) {
+      case 'basic': {
+        return Math.abs(utils.hashCode(userDateSeed)) % 101;
+      }
+      case 'gaussian': {
+        const normalRandom = (seed: string): number => {
+          const hash = utils.hashCode(seed);
+          const randomFactor = Math.sin(hash) * 10000;
+          return randomFactor - Math.floor(randomFactor);
+        };
+
+        const toNormalLuck = (random: number): number => {
+          const u1 = random;
+          const u2 = normalRandom(random.toString());
+          const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+          return Math.min(100, Math.max(0, Math.round(z * 15 + 50)));
+        };
+
+        const dateWeight = (date.getDay() + 1) / 7;
+        const baseRandom = normalRandom(userDateSeed);
+        const weightedRandom = (baseRandom + dateWeight) / 2;
+        return toNormalLuck(weightedRandom);
+      }
+      case 'linear': {
+        const lcgSeed = utils.hashCode(userDateSeed);
+        return Math.floor(((lcgSeed * 9301 + 49297) % 233280) / 233280 * 101);
+      }
+      default: {
+        return Math.abs(utils.hashCode(userDateSeed)) % 101;
+      }
+    }
+  }
 
   // 命令注册部分
   ctx.command('sleep')
@@ -539,12 +588,58 @@ export async function apply(ctx: Context, config: Config) {
   ctx.command('jrrp')
     .option('d', '-d <date>', { type: 'string' })
     .option('b', '-b <code>', { type: 'string' })
+    .option('g', '-g <number:number>', { fallback: 100 })  // 添加新选项
     .action(async ({ session, options }) => {
-      // 首先确保会话有效
       if (!session?.userId) {
         const message = await session.send(session.text('errors.invalid_session'));
         await utils.autoRecall(session, message);
         return;
+      }
+
+      // 处理 -g 选项
+      if (options.g !== null) {
+        if (options.g === 0 || options.g === 100) {
+          // 计算最近一次出现0或100的日期
+          let currentDate = new Date();
+          let daysChecked = 0;
+          const maxDaysToCheck = 365; // 最多检查一年
+
+          while (daysChecked < maxDaysToCheck) {
+            const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+            const userDateSeed = `${session.userId}-${dateStr}`;
+            const specialCode = jrrpSpecial.getSpecialCode(session.userId);
+
+            const score = calculateScore(userDateSeed, currentDate, specialCode);
+
+            if (score === options.g) {
+              return session.send(session.text('commands.jrrp.messages.found_date', [
+                options.g,
+                `${currentDate.getFullYear()}年${currentDate.getMonth() + 1}月${currentDate.getDate()}日`
+              ]));
+            }
+
+            currentDate.setDate(currentDate.getDate() + 1);
+            daysChecked++;
+          }
+          return session.send(session.text('commands.jrrp.messages.not_found', [options.g]));
+        } else if (options.g > 0 && options.g < 100) {
+          // 预测未来指定天数的人品
+          const futureDate = new Date();
+          futureDate.setDate(futureDate.getDate() + options.g);
+          const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+          const userDateSeed = `${session.userId}-${dateStr}`;
+          const specialCode = jrrpSpecial.getSpecialCode(session.userId);
+
+          const score = calculateScore(userDateSeed, futureDate, specialCode);
+
+          return session.send(session.text('commands.jrrp.messages.future_score', [
+            options.g,
+            `${futureDate.getFullYear()}年${futureDate.getMonth() + 1}月${futureDate.getDate()}日`,
+            score
+          ]));
+        } else {
+          return session.send(session.text('commands.jrrp.messages.invalid_number'));
+        }
       }
 
       // 处理绑定识别码，确保错误消息自动撤回
@@ -637,91 +732,35 @@ export async function apply(ctx: Context, config: Config) {
 
         // 检查是否有绑定的识别码，现在可以正确处理特定日期了
         const specialCode = jrrpSpecial.getSpecialCode(session.userId);
+        luckScore = calculateScore(userDateSeed, targetDate, specialCode);
 
-        if (specialCode) {
-          luckScore = jrrpSpecial.calculateSpecialJrrp(specialCode, targetDate, config.specialPassword);
-          // 特殊模式下的0和100特殊处理
-          if (luckScore === 0) {
-            const promptMessage = await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
-            await utils.autoRecall(session, promptMessage);
-            const response = await session.prompt(10000);
-            if (!response) {
-              const message = await session.send(session.text('commands.jrrp.messages.cancel'));
-              await utils.autoRecall(session, message);
-              return;
-            }
-          }
-
-          let resultText = session.text('commands.jrrp.messages.result', [luckScore, userNickname]);
-          if (luckScore === 100 && jrrpSpecial.isFirst100(session.userId)) {
-            jrrpSpecial.markFirst100(session.userId);
-            resultText += session.text(config.specialMessages[luckScore]) +
-                         '\n' + session.text('commands.jrrp.messages.special_mode.first_100');
-          } else if (config.specialMessages && luckScore in config.specialMessages) {
-            resultText += session.text(config.specialMessages[luckScore]);
-          } else if (config.rangeMessages) {
-            for (const [range, msg] of Object.entries(config.rangeMessages)) {
-              const [min, max] = range.split('-').map(Number);
-              if (!isNaN(min) && !isNaN(max) && luckScore >= min && luckScore <= max) {
-                resultText += session.text(msg);
-                break;
-              }
-            }
-          }
-          await session.send(resultText);
-          return;
-        }
-
-        // 将随机数生成相关函数移动到这里
-        const hashCode = (str: string): number => {
-          let hash = 5381;
-          for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) + hash) + str.charCodeAt(i);
-            hash = hash >>> 0;
-          }
-          return hash;
-        };
-
-        switch (config.choice) {
-          case 'basic': {
-            luckScore = Math.abs(hashCode(userDateSeed)) % 101;
-            break;
-          }
-          case 'gaussian': {
-            const normalRandom = (seed: string): number => {
-              const hash = hashCode(seed);
-              const randomFactor = Math.sin(hash) * 10000;
-              return randomFactor - Math.floor(randomFactor);
-            };
-
-            const toNormalLuck = (random: number): number => {
-              const u1 = random;
-              const u2 = normalRandom(random.toString());
-              const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-              return Math.min(100, Math.max(0, Math.round(z * 15 + 50)));
-            };
-
-            const dateWeight = (targetDate.getDay() + 1) / 7;
-            const baseRandom = normalRandom(userDateSeed);
-            const weightedRandom = (baseRandom + dateWeight) / 2;
-            luckScore = toNormalLuck(weightedRandom);
-            break;
-          }
-          case 'linear': {
-            const lcgSeed = hashCode(userDateSeed);
-            luckScore = Math.floor(((lcgSeed * 9301 + 49297) % 233280) / 233280 * 101);
-            break;
-          }
-          default: {
-            luckScore = Math.abs(hashCode(userDateSeed)) % 101;
+        // 特殊模式下的0分特殊处理
+        if (specialCode && luckScore === 0) {
+          await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
+          const response = await session.prompt(10000);
+          // 只有输入y才继续显示结果
+          if (!response || response.toLowerCase() !== 'y') {
+            const message = await session.send(session.text('commands.jrrp.messages.cancel'));
+            await utils.autoRecall(session, message);
+            return;
           }
         }
 
         // 根据分数范围和特殊值生成对应消息
         let resultText = session.text('commands.jrrp.messages.result', [luckScore, userNickname]);
-        if (config.specialMessages && luckScore in config.specialMessages) {
+        if (specialCode) {
+          if (luckScore === 100 && jrrpSpecial.isFirst100(session.userId)) {
+            jrrpSpecial.markFirst100(session.userId);
+            resultText += session.text(config.specialMessages[luckScore]) +
+                          '\n' + session.text('commands.jrrp.messages.special_mode.first_100');
+          } else if (config.specialMessages && luckScore in config.specialMessages) {
+            resultText += session.text(config.specialMessages[luckScore]);
+          }
+        } else if (config.specialMessages && luckScore in config.specialMessages) {
           resultText += session.text(config.specialMessages[luckScore]);
-        } else if (config.rangeMessages) {
+        }
+
+        if (!config.specialMessages?.[luckScore] && config.rangeMessages) {
           for (const [range, msg] of Object.entries(config.rangeMessages)) {
             const [min, max] = range.split('-').map(Number);
             if (!isNaN(min) && !isNaN(max) && luckScore >= min && luckScore <= max) {
@@ -730,8 +769,8 @@ export async function apply(ctx: Context, config: Config) {
             }
           }
         }
-        const message = await session.send(resultText);
-        // 结果消息不自动撤回
+
+        await session.send(resultText);
         return;
       } catch (error) {
         console.error('Daily fortune calculation failed:', error);
