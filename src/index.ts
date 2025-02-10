@@ -230,7 +230,7 @@ const utils = {
   // 添加全局 hashCode 函数
   hashCode(str: string): number {
     let hash = 5381;
-    for (let i = 0; str.length; i++) {
+    for (let i = 0; str.length > i; i++) {
       hash = ((hash << 5) + hash) + str.charCodeAt(i);
       hash = hash >>> 0;
     }
@@ -588,8 +588,9 @@ export async function apply(ctx: Context, config: Config) {
   ctx.command('jrrp')
     .option('d', '-d <date>', { type: 'string' })
     .option('b', '-b <code>', { type: 'string' })
-    .option('g', '-g <number:number>', { fallback: 100 })  // 添加新选项
+    .option('g', '-g <number:number>', { fallback: null })
     .action(async ({ session, options }) => {
+      // 首先确保会话有效
       if (!session?.userId) {
         const message = await session.send(session.text('errors.invalid_session'));
         await utils.autoRecall(session, message);
@@ -597,48 +598,119 @@ export async function apply(ctx: Context, config: Config) {
       }
 
       // 处理 -g 选项
-      if (options.g !== null) {
+      if ('g' in options && options.g !== null) {
         if (options.g === 0 || options.g === 100) {
           // 计算最近一次出现0或100的日期
           let currentDate = new Date();
           let daysChecked = 0;
-          const maxDaysToCheck = 365; // 最多检查一年
+          const maxDaysToCheck = 365;
 
           while (daysChecked < maxDaysToCheck) {
             const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
             const userDateSeed = `${session.userId}-${dateStr}`;
             const specialCode = jrrpSpecial.getSpecialCode(session.userId);
-
             const score = calculateScore(userDateSeed, currentDate, specialCode);
 
             if (score === options.g) {
-              return session.send(session.text('commands.jrrp.messages.found_date', [
+              session.send(session.text('commands.jrrp.messages.found_date', [
                 options.g,
-                `${currentDate.getFullYear()}年${currentDate.getMonth() + 1}月${currentDate.getDate()}日`
+                `${currentDate.getFullYear().toString().slice(-2)}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${String(currentDate.getDate()).padStart(2, '0')}`
               ]));
+              return;
             }
 
             currentDate.setDate(currentDate.getDate() + 1);
             daysChecked++;
           }
-          return session.send(session.text('commands.jrrp.messages.not_found', [options.g]));
-        } else if (options.g > 0 && options.g < 100) {
-          // 预测未来指定天数的人品
+          session.send(session.text('commands.jrrp.messages.not_found', [options.g]));
+          return;
+        } else if (options.g >= -99 && options.g <= 99 && options.g !== 0) {
+          const scoresByMonth = new Map<string, Array<{dates: string, scores: string[]}>>();
           const futureDate = new Date();
-          futureDate.setDate(futureDate.getDate() + options.g);
-          const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-          const userDateSeed = `${session.userId}-${dateStr}`;
           const specialCode = jrrpSpecial.getSpecialCode(session.userId);
+          const days = Math.abs(options.g);
+          const isForward = options.g > 0;
 
-          const score = calculateScore(userDateSeed, futureDate, specialCode);
+          let currentMonth = '';
+          let currentGroup: number[] = [];
+          let startDate = '';
+          let prevDate = futureDate;
 
-          return session.send(session.text('commands.jrrp.messages.future_score', [
-            options.g,
-            `${futureDate.getFullYear()}年${futureDate.getMonth() + 1}月${futureDate.getDate()}日`,
-            score
-          ]));
+          for (let day = 1; day <= days; day++) {
+            // 根据正负数决定日期增减
+            if (isForward) {
+              futureDate.setDate(futureDate.getDate() + 1);
+            } else {
+              futureDate.setDate(futureDate.getDate() - 1);
+            }
+
+            const monthKey = `${(futureDate.getMonth() + 1)}`;
+            const dayNum = futureDate.getDate();
+
+            if (currentGroup.length === 0) {
+              startDate = String(dayNum).padStart(2, '0');
+            }
+
+            // 月份变更时的处理
+            if (monthKey !== currentMonth) {
+              if (currentMonth && currentGroup.length > 0) {
+                const endDate = String(prevDate.getDate()).padStart(2, '0');
+                scoresByMonth.get(currentMonth).push({
+                  dates: `${startDate}-${endDate}：`,
+                  scores: currentGroup.map(score => String(score).padStart(3, ' '))
+                });
+              }
+              currentMonth = monthKey;
+              if (!scoresByMonth.has(monthKey)) {
+                scoresByMonth.set(monthKey, []);
+              }
+              currentGroup = [];
+              startDate = String(dayNum).padStart(2, '0');
+            }
+
+            const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+            const userDateSeed = `${session.userId}-${dateStr}`;
+            const score = calculateScore(userDateSeed, futureDate, specialCode);
+
+            currentGroup.push(score);
+
+            if (currentGroup.length === 7) {
+              scoresByMonth.get(monthKey).push({
+                dates: `${startDate}-${String(dayNum).padStart(2, '0')}：`,
+                scores: currentGroup.map(score => String(score).padStart(3, ' '))
+              });
+              currentGroup = [];
+            }
+
+            prevDate = new Date(futureDate);
+          }
+
+          // 处理最后一组不完整的数据
+          if (currentGroup.length > 0) {
+            scoresByMonth.get(currentMonth).push({
+              dates: `${startDate}-${String(prevDate.getDate()).padStart(2, '0')}：`,
+              scores: currentGroup.map(score => String(score).padStart(3, ' '))
+            });
+          }
+
+          // 根据正负数决定月份显示顺序
+          let monthEntries = Array.from(scoresByMonth.entries());
+          if (!isForward) {
+            monthEntries = monthEntries.reverse();
+          }
+
+          const scoresDisplay = monthEntries.map(([month, groupData]) => {
+            const scoresDisplay = groupData
+              .map(group => `${group.dates}${group.scores.join(' ')}`)
+              .join('\n');
+            return session.text('commands.jrrp.messages.future_score', [month, scoresDisplay]);
+          });
+
+          session.send(scoresDisplay.join('\n\n'));
+          return;
         } else {
-          return session.send(session.text('commands.jrrp.messages.invalid_number'));
+          session.send(session.text('commands.jrrp.messages.invalid_number'));
+          return;
         }
       }
 
