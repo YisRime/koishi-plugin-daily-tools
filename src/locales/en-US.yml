@@ -1,5 +1,5 @@
 sleepconfig:
-  $desc: "Sleep Configuration"
+  $desc: "Sleep Mode Configuration"
   sleep:
     type:
       $desc: "Mute Mode"
@@ -7,19 +7,18 @@ sleepconfig:
         - "Fixed Duration"
         - "Until Time"
         - "Random Duration"
-    duration: "Fixed Mute Duration (hours)"
-    until: "Mute Until (HH:MM)"
-    min: "Minimum Random Duration (hours)"
-    max: "Maximum Random Duration (hours)"
+    duration: "Fixed Mute Duration (Hours)"
+    until: "Mute Until Time (HH:MM)"
+    min: "Minimum Random Duration (Hours)"
+    max: "Maximum Random Duration (Hours)"
 
 autolikeconfig:
-  $desc: "Auto-like Configuration"
+  $desc: "Auto-Like Configuration"
   enabled:
-    $desc: "Enable Auto-like"
+    $desc: "Enable Auto-Like"
   list:
-    $desc: "Auto-like List"
+    $desc: "Auto-Like List"
     $inner: "Target QQ"
-  time: "Daily Like Time (HH:MM)"
   notifyAccount: "Admin/Notification Account"
   enableReminder: "Enable Notifications and Owner Like Reminder"
 
@@ -34,13 +33,13 @@ jrrpconfig:
   specialPassword:
     $desc: "Unlock Password (Special Mode)"
   rangeMessages:
-    $desc: "Luck Range Messages (max 10 items)"
+    $desc: "Luck Range Messages (Max 10 items)"
     $inner: "Please modify text in localization page, ensure ranges cover 0-100"
   specialMessages:
-    $desc: "Special Value Messages (max 10 items)"
+    $desc: "Special Value Messages (Max 10 items)"
     $inner: "Please modify text in localization page"
   holidayMessages:
-    $desc: "Special Date Messages (max 10 items)"
+    $desc: "Special Date Messages (Max 10 items)"
     $inner: "Please modify text in localization page, ensure dates follow [MM-DD] format"
 
 muteconfig:
@@ -51,13 +50,13 @@ muteconfig:
       $inner:
         - "Fixed Duration"
         - "Random Duration"
-    duration: "Fixed Mute Duration (minutes)"
-    minDuration: "Minimum Random Duration (minutes)"
-    maxDuration: "Maximum Random Duration (minutes)"
-    maxAllowedDuration: "Maximum Allowed Mute Duration (minutes)"
+    duration: "Fixed Mute Duration (Minutes)"
+    minDuration: "Minimum Random Duration (Minutes)"
+    maxDuration: "Maximum Random Duration (Minutes)"
+    maxAllowedDuration: "Maximum Allowed Mute Duration (Minutes)"
     enableMessage: "Enable Mute Notification Messages"
     enableMuteOthers: "Allow Muting Others"
-    probability: "Probability of Muting Others"
+    probability: "Success Probability for Muting Others"
 
 commands:
   sleep:
@@ -73,22 +72,22 @@ commands:
       failed: "Sleep mode failed, please check bot permissions"
 
   zanwo:
-    description: "Auto-like Service"
-    usage: "Send command to receive likes from bot, limit 50 likes"
+    description: "Auto-like for you"
+    usage: "Send command to receive likes from bot, maximum 50 likes"
     examples: |-
       zanwo
       likeme
     messages:
-      success: "Likes sent, don't forget to like my owner ({0})~"
-      success_no_reminder: "Likes sent, don't forget to like my owner~"
+      success: "Likes sent, remember to like my owner ({0}) too~"
+      success_no_reminder: "Likes sent, remember to like my owner too~"
       like_failed: "Failed to send likes"
 
   mute:
-    description: "Mute Self or Others"
+    description: "Mute yourself or others"
     usage: |-
-      -u Mute specified user
-      -r Mute random user
-      [duration] Specify mute duration (minutes)
+      -u mute specified user
+      -r mute random user
+      [duration] specify mute duration (minutes)
     examples: |-
       mute -u/r [1]
     messages:
@@ -100,12 +99,12 @@ commands:
       notify:
         self_muted: "You have been muted for {0} minutes {1} seconds"
         target_muted: "{0} has been muted for {1} minutes {2} seconds"
-        others_disabled: "Muting others has been disabled"
+        others_disabled: "Muting others is disabled"
 
   jrrp:
     description: "Daily Luck"
     usage: |-
-      Check your daily luck, supports specified date
+      Check your daily luck value, supports specified date
     examples: |-
       jrrp -d 1970-01-01
     options:
@@ -115,49 +114,48 @@ commands:
       prompt: "Would you like to check your luck today?"
       cancel: "Alright, have a nice day!"
       error: "Error calculating daily luck"
-      found_date: "Your {0} points will be on {1}"
-      not_found: "No {0} points found in the next year"
-      future_score: "▶ Month {0}: \n{1}"
-      invalid_number: "Please enter an integer between 0 and 100"
+      found_date: "Your next {0} points will appear on {1}"
+      not_found: "You won't get {0} points in the next year"
+      invalid_number: "Please enter a number between 0-100"
       range:
-        1: "...(on a scale of 100)"
+        1: "...(It's percentile)"
         2: "?! No way..."
         3: ". Ugh..."
         4: "! Barely acceptable...?"
         5: "! Not bad, not bad."
-        6: ". Pretty lucky today!"
-        7: "! Excellent!"
-        8: "! Almost perfect..."
-        9: "Reserved"
-        10: "Reserved"
+        6: ". Lucky day today!"
+        7: "! Outstanding!"
+        8: "! Almost hit 100..."
+        9: "Backup"
+        10: "Backup"
       special:
-        1: "! Terrible luck!"
-        2: "! Perfectly balanced..."
+        1: "! Terrible!"
+        2: "! Fifty-fifty..."
         3: "! 100! 100!!!!"
-        4: "Reserved"
-        5: "Reserved"
-        6: "Reserved"
-        7: "Reserved"
-        8: "Reserved"
-        9: "Reserved"
-        10: "Reserved"
+        4: "Backup"
+        5: "Backup"
+        6: "Backup"
+        7: "Backup"
+        8: "Backup"
+        9: "Backup"
+        10: "Backup"
       date:
         1: "Happy New Year!"
         2: "Merry Christmas!"
-        3: "Reserved"
-        4: "Reserved"
-        5: "Reserved"
-        6: "Reserved"
-        7: "Reserved"
-        8: "Reserved"
-        9: "Reserved"
-        10: "Reserved"
+        3: "Backup"
+        4: "Backup"
+        5: "Backup"
+        6: "Backup"
+        7: "Backup"
+        8: "Backup"
+        9: "Backup"
+        10: "Backup"
       special_mode:
         invalid_code: "Invalid identification code!"
         bind_success: "Identification code bound successfully!"
         unbind_success: "Identification code unbound successfully!"
-        first_100: "Hidden theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
-        zero_prompt: "Before viewing results, please agree to the following additional terms:\n1. I acknowledge and understand that PCL2's daily luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as computer damage) caused by using this software.\n(y/n)"
+        first_100: "Hidden Theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
+        zero_prompt: "Before viewing results, please agree to the following additional terms:\n1. I acknowledge and understand that PCL2's daily luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
 
 errors:
   invalid_time: "Invalid time format"

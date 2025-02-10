@@ -19,7 +19,6 @@ autolikeconfig:
   list:
     $desc: "自动点赞列表"
     $inner: "目标QQ"
-  time: "定时点赞时间（HH:MM）"
   notifyAccount: "管理员/通知账号"
   enableReminder: "启用通知和点赞主人提示"
 
@@ -96,7 +95,7 @@ commands:
         guild_only: "此功能仅限群聊使用"
         no_valid_members: "没有可用的成员可供禁言"
         target_not_found: "找不到指定的用户"
-        duration_too_long: "禁言时长超过上限（{0}分钟）"
+        duration_too_long: "禁言时长超过设置上限（{0}分钟）"
       notify:
         self_muted: "已将你禁言{0}分钟{1}秒"
         target_muted: "已将{0}禁言{1}分钟{2}秒"
@@ -115,9 +114,8 @@ commands:
       prompt: "你要看看今天的人品吗？"
       cancel: "好的，祝您今天愉快！"
       error: "计算今日人品时出错"
-      found_date: "你的{0}分在 {1}"
-      not_found: "未来一年内你不会出现{0}分"
-      future_score: "▶ {0}月：\n{1}"
+      found_date: "你的下一个{0}分会出现在{1}"
+      not_found: "在未来一年内你不会出现{0}分"
       invalid_number: "请输入0-100之间的整数"
       range:
         1: "……（是百分制哦）"

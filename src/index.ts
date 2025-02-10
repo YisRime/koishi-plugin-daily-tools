@@ -40,7 +40,6 @@ export interface Config {
   }
   enabled: boolean
   list?: string[]
-  time?: string
   notifyAccount?: string
   enableReminder?: boolean
   choice?: JrrpAlgorithm
@@ -82,7 +81,6 @@ export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     enabled: Schema.boolean().default(false),
     list: Schema.array(String),
-    time: Schema.string().default('00:00'),
     notifyAccount: Schema.string(),
     enableReminder: Schema.boolean().default(true),
   }).i18n({
@@ -149,14 +147,6 @@ class ConfigValidator {
     return /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time);
   }
 
-  private validateAutoLike(): void {
-    if (this.config.enabled && this.config.time) {
-      if (!this.validateTimeFormat(this.config.time)) {
-        throw new Error('Invalid auto-like time format');
-      }
-    }
-  }
-
   private validateSleepTime(): void {
     if (this.config.sleep.type === SleepMode.UNTIL &&
         !this.validateTimeFormat(this.config.sleep.until)) {
@@ -189,7 +179,6 @@ class ConfigValidator {
   }
 
   validate(): void {
-    this.validateAutoLike();
     this.validateSleepTime();
     this.validateRangeMessages();
   }
@@ -503,13 +492,14 @@ export async function apply(ctx: Context, config: Config) {
           return null;
         } catch (error) {
           if (retry === maxRetries - 1) {
+            // 修改这里，使用 utils.sendAndRecall 来处理失败消息
             await utils.sendAndRecall(
               session,
               successfulLikes > 0
                 ? (config.enableReminder
                   ? 'commands.zanwo.messages.success'
                   : 'commands.zanwo.messages.success_no_reminder')
-                : 'commands.zanwo.messages.like_failed',  // 修改这里的错误消息路径
+                : 'commands.zanwo.messages.like_failed',
               [config.notifyAccount]
             );
             return null;
@@ -599,119 +589,37 @@ export async function apply(ctx: Context, config: Config) {
 
       // 处理 -g 选项
       if ('g' in options && options.g !== null) {
-        if (options.g === 0 || options.g === 100) {
-          // 计算最近一次出现0或100的日期
-          let currentDate = new Date();
-          let daysChecked = 0;
-          const maxDaysToCheck = 365;
-
-          while (daysChecked < maxDaysToCheck) {
-            const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
-            const userDateSeed = `${session.userId}-${dateStr}`;
-            const specialCode = jrrpSpecial.getSpecialCode(session.userId);
-            const score = calculateScore(userDateSeed, currentDate, specialCode);
-
-            if (score === options.g) {
-              session.send(session.text('commands.jrrp.messages.found_date', [
-                options.g,
-                `${currentDate.getFullYear().toString().slice(-2)}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${String(currentDate.getDate()).padStart(2, '0')}`
-              ]));
-              return;
-            }
-
-            currentDate.setDate(currentDate.getDate() + 1);
-            daysChecked++;
-          }
-          session.send(session.text('commands.jrrp.messages.not_found', [options.g]));
-          return;
-        } else if (options.g >= -99 && options.g <= 99 && options.g !== 0) {
-          const scoresByMonth = new Map<string, Array<{dates: string, scores: string[]}>>();
-          const futureDate = new Date();
-          const specialCode = jrrpSpecial.getSpecialCode(session.userId);
-          const days = Math.abs(options.g);
-          const isForward = options.g > 0;
-
-          let currentMonth = '';
-          let currentGroup: number[] = [];
-          let startDate = '';
-          let prevDate = futureDate;
-
-          for (let day = 1; day <= days; day++) {
-            // 根据正负数决定日期增减
-            if (isForward) {
-              futureDate.setDate(futureDate.getDate() + 1);
-            } else {
-              futureDate.setDate(futureDate.getDate() - 1);
-            }
-
-            const monthKey = `${(futureDate.getMonth() + 1)}`;
-            const dayNum = futureDate.getDate();
-
-            if (currentGroup.length === 0) {
-              startDate = String(dayNum).padStart(2, '0');
-            }
-
-            // 月份变更时的处理
-            if (monthKey !== currentMonth) {
-              if (currentMonth && currentGroup.length > 0) {
-                const endDate = String(prevDate.getDate()).padStart(2, '0');
-                scoresByMonth.get(currentMonth).push({
-                  dates: `${startDate}-${endDate}：`,
-                  scores: currentGroup.map(score => String(score).padStart(3, ' '))
-                });
-              }
-              currentMonth = monthKey;
-              if (!scoresByMonth.has(monthKey)) {
-                scoresByMonth.set(monthKey, []);
-              }
-              currentGroup = [];
-              startDate = String(dayNum).padStart(2, '0');
-            }
-
-            const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-            const userDateSeed = `${session.userId}-${dateStr}`;
-            const score = calculateScore(userDateSeed, futureDate, specialCode);
-
-            currentGroup.push(score);
-
-            if (currentGroup.length === 7) {
-              scoresByMonth.get(monthKey).push({
-                dates: `${startDate}-${String(dayNum).padStart(2, '0')}：`,
-                scores: currentGroup.map(score => String(score).padStart(3, ' '))
-              });
-              currentGroup = [];
-            }
-
-            prevDate = new Date(futureDate);
-          }
-
-          // 处理最后一组不完整的数据
-          if (currentGroup.length > 0) {
-            scoresByMonth.get(currentMonth).push({
-              dates: `${startDate}-${String(prevDate.getDate()).padStart(2, '0')}：`,
-              scores: currentGroup.map(score => String(score).padStart(3, ' '))
-            });
-          }
-
-          // 根据正负数决定月份显示顺序
-          let monthEntries = Array.from(scoresByMonth.entries());
-          if (!isForward) {
-            monthEntries = monthEntries.reverse();
-          }
-
-          const scoresDisplay = monthEntries.map(([month, groupData]) => {
-            const scoresDisplay = groupData
-              .map(group => `${group.dates}${group.scores.join(' ')}`)
-              .join('\n');
-            return session.text('commands.jrrp.messages.future_score', [month, scoresDisplay]);
-          });
-
-          session.send(scoresDisplay.join('\n\n'));
-          return;
-        } else {
+        // 验证输入范围是否在0-100之间
+        if (options.g < 0 || options.g > 100) {
           session.send(session.text('commands.jrrp.messages.invalid_number'));
           return;
         }
+
+        // 计算下一次出现该分数的日期
+        let currentDate = new Date();
+        let daysChecked = 0;
+        const maxDaysToCheck = 365;
+
+        while (daysChecked < maxDaysToCheck) {
+          currentDate.setDate(currentDate.getDate() + 1);
+          const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+          const userDateSeed = `${session.userId}-${dateStr}`;
+          const specialCode = jrrpSpecial.getSpecialCode(session.userId);
+          const score = calculateScore(userDateSeed, currentDate, specialCode);
+
+          if (score === options.g) {
+            session.send(session.text('commands.jrrp.messages.found_date', [
+              options.g,
+              `${currentDate.getFullYear().toString().slice(-2)}/${String(currentDate.getMonth() + 1).padStart(2, '0')}/${String(currentDate.getDate()).padStart(2, '0')}`
+            ]));
+            return;
+          }
+
+          daysChecked++;
+        }
+
+        session.send(session.text('commands.jrrp.messages.not_found', [options.g]));
+        return;
       }
 
       // 处理绑定识别码，确保错误消息自动撤回
@@ -853,13 +761,8 @@ export async function apply(ctx: Context, config: Config) {
     });
 
   // 自动点赞定时任务配置
-  if (config.enabled && config.list?.length > 0 && config.time) {
-    const [hour, minute] = config.time.split(':').map(Number);
-    if (isNaN(hour) || isNaN(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      throw new Error('Invalid time format');
-    }
-
-    ctx.cron(`0 ${minute} ${hour} * * *`, async () => {
+  if (config.enabled && config.list?.length > 0) {
+    ctx.cron('0 0 0 * * *', async () => {
       const results = await Promise.all(config.list.map(async (userId) => {
         let retryCount = 0;
         const maxRetries = 3;
