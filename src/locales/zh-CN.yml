@@ -14,11 +14,6 @@ sleepconfig:
 
 autolikeconfig:
   $desc: "点赞配置"
-  enabled:
-    $desc: "启用自动点赞"
-  list:
-    $desc: "自动点赞列表"
-    $inner: "目标QQ"
   notifyAccount: "管理员/通知账号"
   enableReminder: "启用通知和点赞主人提示"
 
@@ -73,14 +68,17 @@ commands:
 
   zanwo:
     description: "自动为您点赞"
-    usage: "发送命令即可让机器人赞你，上限50个赞"
+    usage: |-
+      发送命令即可让机器人赞你，上限50个赞
+      -u 为指定用户点赞
     examples: |-
-      zanwo
+      zanwo -u @用户
       赞我
     messages:
       success: "点赞完成，记得赞我主人({0})哦~"
       success_no_reminder: "点赞完成，记得赞我主人哦~"
       like_failed: "点赞失败"
+      target_not_found: "找不到指定的用户"
 
   mute:
     description: "禁言自己或他人"

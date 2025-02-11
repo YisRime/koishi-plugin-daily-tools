@@ -38,12 +38,10 @@ export interface Config {
     min: number
     max: number
   }
-  enabled: boolean
-  list?: string[]
-  notifyAccount?: string
-  enableReminder?: boolean
+  notifyAccount?: string   // 保留这个用于显示主人提醒
+  enableReminder?: boolean // 保留这个用于控制提醒显示
   choice?: JrrpAlgorithm
-  specialPassword?: string  // 新增：特殊模式密码
+  specialPassword?: string
   specialMessages?: Record<number, string>
   rangeMessages?: Record<string, string>
   holidayMessages?: Record<string, string>
@@ -77,10 +75,8 @@ export const Config: Schema<Config> = Schema.intersect([
     'en-US': require('./locales/en-US').sleepconfig,
   }),
 
-  // 修改 autolike 配置：扁平化结构，移除原 autoLike 子对象
+  // 删除 autolike 配置，但保留提醒相关配置
   Schema.object({
-    enabled: Schema.boolean().default(false),
-    list: Schema.array(String),
     notifyAccount: Schema.string(),
     enableReminder: Schema.boolean().default(true),
   }).i18n({
@@ -485,20 +481,34 @@ export async function apply(ctx: Context, config: Config) {
 
   ctx.command('zanwo')
     .alias('赞我')
-    .action(async ({ session }) => {
+    .option('u', '-u <target:text>')
+    .action(async ({ session, options }) => {
       if (!session?.userId) {
         const message = await session.send(session.text('errors.invalid_session'));
         await utils.autoRecall(session, message);
         return;
       }
 
+      let targetId = session.userId;
+      if (options?.u) {
+        const parsedUser = h.parse(options.u)[0];
+        targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
+
+        // 验证目标用户
+        if (!targetId) {
+          const message = await session.send(session.text('commands.zanwo.messages.target_not_found'));
+          await utils.autoRecall(session, message);
+          return;
+        }
+      }
+
       let successfulLikes = 0;
-      const maxRetries = 3;
+      const maxRetries = 2;
 
       for (let retry = 0; retry < maxRetries; retry++) {
         try {
           await Promise.all(Array(5).fill(null).map(() =>
-            session.bot.internal.sendLike(session.userId, 10)
+            session.bot.internal.sendLike(targetId, 10)
           ));
           successfulLikes = 5;
 
@@ -515,7 +525,7 @@ export async function apply(ctx: Context, config: Config) {
             await utils.autoRecall(session, message);
             return null;
           }
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
     });
@@ -809,34 +819,4 @@ export async function apply(ctx: Context, config: Config) {
         return;
       }
     });
-
-  // 自动点赞定时任务配置
-  if (config.enabled && config.list?.length > 0) {
-    ctx.cron('0 0 0 * * *', async () => {
-      const results = await Promise.all(config.list.map(async (userId) => {
-        let retryCount = 0;
-        const maxRetries = 3;
-
-        while (retryCount < maxRetries) {
-          try {
-            await Promise.all(Array(5).fill(null).map(() =>
-              ctx.bots.first?.internal.sendLike(userId, 10)
-            ));
-            return `User ${userId} like succeeded`;
-          } catch (error) {
-            retryCount++;
-            if (retryCount === maxRetries) {
-              return `User ${userId} like failed: ${error.message}`;
-            }
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-        }
-      }));
-
-      if (config.notifyAccount) {
-        const resultMessage = results.join('\n');
-        await ctx.bots.first?.sendPrivateMessage(config.notifyAccount, resultMessage);
-      }
-    });
-  }
 }

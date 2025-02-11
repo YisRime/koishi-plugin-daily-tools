@@ -14,11 +14,6 @@ sleepconfig:
 
 autolikeconfig:
   $desc: "Auto-Like Configuration"
-  enabled:
-    $desc: "Enable Auto-Like"
-  list:
-    $desc: "Auto-Like List"
-    $inner: "Target QQ"
   notifyAccount: "Admin/Notification Account"
   enableReminder: "Enable Notifications and Owner Like Reminder"
 
@@ -73,14 +68,17 @@ commands:
 
   zanwo:
     description: "Auto-like for you"
-    usage: "Send command to receive likes from bot, maximum 50 likes"
+    usage: |-
+      Send command to receive likes from bot, maximum 50 likes
+      -u like specified user
     examples: |-
-      zanwo
+      zanwo -u @user
       likeme
     messages:
       success: "Likes sent, remember to like my owner ({0}) too~"
       success_no_reminder: "Likes sent, remember to like my owner too~"
       like_failed: "Failed to send likes"
+      target_not_found: "Specified user not found"
 
   mute:
     description: "Mute yourself or others"
