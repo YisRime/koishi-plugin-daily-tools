@@ -806,7 +806,7 @@ export async function apply(ctx: Context, config: Config) {
   ctx.command('jrrp')
     .option('d', '-d <date>', { type: 'string' })
     .option('b', '-b <code>', { type: 'string' })
-    .option('g', '-g <number:number>', { fallback: 100 })
+    .option('g', '-g <number:number>', { fallback: null })
     .action(async ({ session, options }) => {
       // 处理查找特定分数的日期
       if ('g' in options && options.g !== null) {
