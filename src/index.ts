@@ -804,9 +804,9 @@ export async function apply(ctx: Context, config: Config) {
 
   // 今日人品命令处理
   ctx.command('jrrp')
-    .option('d', '-d <date>', { type: 'string' })     // 指定日期选项
-    .option('b', '-b <code>', { type: 'string' })     // 绑定特殊码选项
-    .option('g', '-g <number:number>', { fallback: null }) // 查找特定分数日期选项
+    .option('d', '-d <date>', { type: 'string' })
+    .option('b', '-b <code>', { type: 'string' })
+    .option('g', '-g <number:number>', { fallback: 100 })
     .action(async ({ session, options }) => {
       // 处理查找特定分数的日期
       if ('g' in options && options.g !== null) {
@@ -817,35 +817,28 @@ export async function apply(ctx: Context, config: Config) {
           return;
         }
 
-        // 向未来查找指定分数的日期
-        let currentDate = new Date();
-        let daysChecked = 0;
-        const maxDaysToCheck = CONSTANTS.LIMITS.MAX_DAYS_TO_CHECK;
+        const currentDate = new Date();
+        const targetScore = options.g;
+        const specialCode = jrrpSpecial.getSpecialCode(session.userId);
 
-        while (daysChecked < maxDaysToCheck) {
-          // 计算下一天的运势分数
-          currentDate.setDate(currentDate.getDate() + 1);
-          const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
+        for (let i = 1; i <= CONSTANTS.LIMITS.MAX_DAYS_TO_CHECK; i++) {
+          const checkDate = new Date(currentDate);
+          checkDate.setDate(currentDate.getDate() + i);
+
+          const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
           const userDateSeed = `${session.userId}-${dateStr}`;
-          const specialCode = jrrpSpecial.getSpecialCode(session.userId);
-          const score = await monitoredCalculateScore(userDateSeed, currentDate, specialCode);
+          const score = await monitoredCalculateScore(userDateSeed, checkDate, specialCode);
 
-          // 找到匹配的分数
-          if (score === options.g) {
-            const message = await session.send(session.text('commands.jrrp.messages.found_date', [
-              options.g,
-              `${currentDate.getFullYear().toString().slice(-2)}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`
-            ]));
-            await utils.autoRecall(session, message);
+          if (score === targetScore) {
+            const formattedDate = `${checkDate.getFullYear().toString().slice(-2)}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+            // 移除自动撤回
+            await session.send(session.text('commands.jrrp.messages.found_date', [targetScore, formattedDate]));
             return;
           }
-
-          daysChecked++;
         }
 
-        // 未找到匹配的日期
-        const message = await session.send(session.text('commands.jrrp.messages.not_found', [options.g]));
-        await utils.autoRecall(session, message);
+        // 移除自动撤回
+        await session.send(session.text('commands.jrrp.messages.not_found', [targetScore]));
         return;
       }
 
@@ -961,8 +954,8 @@ export async function apply(ctx: Context, config: Config) {
           await utils.autoRecall(session, promptMessage);
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
           if (!response) {
-            const message = await session.send(session.text('commands.jrrp.messages.cancel'));
-            await utils.autoRecall(session, message);
+            // 移除自动撤回
+            await session.send(session.text('commands.jrrp.messages.cancel'));
             return;
           }
         }
