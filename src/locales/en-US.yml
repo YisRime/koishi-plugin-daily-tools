@@ -7,10 +7,10 @@ sleepconfig:
         - "Fixed Duration"
         - "Until Time"
         - "Random Duration"
-    duration: "Fixed Mute Duration (Hours)"
-    until: "Mute Until Time (HH:MM)"
-    min: "Minimum Random Duration (Hours)"
-    max: "Maximum Random Duration (Hours)"
+    duration: "Fixed Mute Duration (hours)"
+    until: "Mute Until (HH:MM)"
+    min: "Minimum Random Duration (hours)"
+    max: "Maximum Random Duration (hours)"
 
 muteconfig:
   $desc: "Random Mute Configuration"
@@ -20,133 +20,130 @@ muteconfig:
       $inner:
         - "Fixed Duration"
         - "Random Duration"
-    duration: "Fixed Mute Duration (Minutes)"
-    minDuration: "Minimum Random Duration (Minutes)"
-    maxDuration: "Maximum Random Duration (Minutes)"
-    maxAllowedDuration: "Maximum Allowed Mute Duration (Minutes)"
+    duration: "Fixed Mute Duration (minutes)"
+    minDuration: "Minimum Random Duration (minutes)"
+    maxDuration: "Maximum Random Duration (minutes)"
+    maxAllowedDuration: "Maximum Allowed Mute Duration (minutes)"
     enableMessage: "Enable Mute Notification Messages"
     enableMuteOthers: "Allow Muting Others"
-    probability: "Success Probability for Muting Others"
+    probability: "Probability of Successfully Muting Others"
 
 jrrpconfig:
-  $desc: "Daily Luck Configuration"
+  $desc: "Daily Fortune Configuration"
   choice:
     $desc: "Algorithm Selection"
     $inner:
       - "Modulo Algorithm"
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
-  notifyAccount: "Notification Account"
+  notifyAccount: "Like Success Notification Account"
   specialPassword:
-    $desc: "Unlock Password (Special Mode)"
+    $desc: "Identification Code Parameters"
   rangeMessages:
-    $desc: "Luck Range Messages (Max 10 items)"
-    $inner: "Please modify text in localization page, ensure ranges cover 0-100"
+    $desc: "Fortune Range Configuration (max 10 items)"
+    $inner: "Please modify text in localization page, ensure range covers 0-100"
   specialMessages:
-    $desc: "Special Value Messages (Max 10 items)"
+    $desc: "Special Value Prompts (max 10 items)"
     $inner: "Please modify text in localization page"
   holidayMessages:
-    $desc: "Special Date Messages (Max 10 items)"
+    $desc: "Special Date Prompts (max 10 items)"
     $inner: "Please modify text in localization page, ensure dates follow [MM-DD] format"
 
 commands:
   sleep:
-    description: "Sleep Mode"
+    description: "Sleep Mode, mute for specified duration"
     usage: |-
       Automatically mute for specified duration
       Supports three modes: Fixed Duration, Until Time, Random Duration
-    examples: |-
-      sleep
     messages:
       success: "Good night, sweet dreams!"
-      failed: "Sleep mode failed, please check bot permissions"
+      failed: "Failed, please check if bot has required permissions"
 
   zanwo:
-    description: "Auto-like for you"
+    description: "Auto-like, can like others"
     usage: |-
-      Send command to receive likes from bot, maximum 50 likes
-      -u like specified user
+      Send command to get likes from bot, limit 50 likes
+      -u to like specific user
     examples: |-
       zanwo -u @user
-      likeme
     messages:
-      success: "Likes sent, remember to like {0} back~"
-      like_failed: "Failed to send likes"
+      success: "Like completed, remember to like {0} back~"
+      like_failed: "Like failed"
       target_not_found: "Specified user not found"
 
   mute:
     description: "Mute yourself or others"
     usage: |-
+      [duration] Specify mute duration (minutes)
       -u mute specified user
       -r mute random user
-      [duration] specify mute duration (minutes)
     examples: |-
       mute -u/r [1]
     messages:
       errors:
-        no_valid_members: "No valid members available for muting"
+        no_valid_members: "No valid members to mute"
         target_not_found: "Specified user not found"
-        duration_too_long: "Mute duration exceeds limit ({0} minutes)"
+        duration_too_long: "Mute duration ({0} minutes) exceeds limit"
       notify:
         self_muted: "You have been muted for {0} minutes {1} seconds"
         target_muted: "{0} has been muted for {1} minutes {2} seconds"
-        others_disabled: "Muting others is disabled"
+        others_disabled: "Muting others feature has been disabled"
 
   jrrp:
-    description: "Daily Luck"
+    description: "Daily Fortune, calculate today's luck"
     usage: |-
-      Check your daily luck value, supports specified date
+      Check daily fortune, supports specific date
     examples: |-
       jrrp -d 1970-01-01
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
-      result: "{1} Your luck value today is: {0}"
-      prompt: "Would you like to check your luck today?"
+      result: "{1} Your fortune value today is: {0}"
+      prompt: "Would you like to see your fortune today?"
       cancel: "Alright, have a nice day!"
-      error: "Error calculating daily luck"
+      error: "Error calculating daily fortune"
       found_date: "Your next {0} points will appear on {1}"
       not_found: "You won't get {0} points in the next year"
-      invalid_number: "Please enter a number between 0-100"
+      invalid_number: "Please enter an integer between 0-100"
       range:
-        1: "...(It's percentile)"
+        1: "... (It's percentile)"
         2: "?! No way..."
-        3: ". Ugh..."
+        3: "! Ugh..."
         4: "! Barely acceptable...?"
         5: "! Not bad, not bad."
-        6: ". Lucky day today!"
-        7: "! Outstanding!"
-        8: "! Almost hit 100..."
-        9: "Backup"
-        10: "Backup"
+        6: "! Pretty lucky today!"
+        7: "! Excellent!"
+        8: "! Almost got 100..."
+        9: "Reserved"
+        10: "Reserved"
       special:
         1: "! Terrible!"
         2: "! Fifty-fifty..."
         3: "! 100! 100!!!!"
-        4: "Backup"
-        5: "Backup"
-        6: "Backup"
-        7: "Backup"
-        8: "Backup"
-        9: "Backup"
-        10: "Backup"
+        4: "Reserved"
+        5: "Reserved"
+        6: "Reserved"
+        7: "Reserved"
+        8: "Reserved"
+        9: "Reserved"
+        10: "Reserved"
       date:
         1: "Happy New Year!"
         2: "Merry Christmas!"
-        3: "Backup"
-        4: "Backup"
-        5: "Backup"
-        6: "Backup"
-        7: "Backup"
-        8: "Backup"
-        9: "Backup"
-        10: "Backup"
+        3: "Reserved"
+        4: "Reserved"
+        5: "Reserved"
+        6: "Reserved"
+        7: "Reserved"
+        8: "Reserved"
+        9: "Reserved"
+        10: "Reserved"
       special_mode:
-        invalid_code: "Invalid identification code!"
+        invalid_code: "Invalid identification code format!"
         bind_success: "Identification code bound successfully!"
         unbind_success: "Identification code unbound successfully!"
-        first_100: "Hidden Theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
-        zero_prompt: "Before viewing results, please agree to the following additional terms:\n1. I acknowledge and understand that PCL2's daily luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
+        first_100: "Hidden theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Fortune to confirm"
+        zero_prompt: "Before viewing results, please agree to the following terms:\n1. I acknowledge that PCL2's Daily Fortune feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (e.g., smashing computers) caused by using this software.\n(y/n)"
 
 errors:
   invalid_time: "Invalid time format"

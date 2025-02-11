@@ -1,4 +1,4 @@
-// 基础依赖导入
+// 基础依赖导入和插件元数据定义
 import { Context, Schema, Random, h } from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
 
@@ -101,14 +101,14 @@ export const Config: Schema<Config> = Schema.intersect([
     notifyAccount: Schema.string(),
     specialPassword: Schema.string().default('PASSWORD').role('secret'),
     rangeMessages: Schema.dict(String).default({
-      '0-9': 'commands.jrrp.messages.range.1',
-      '10-19': 'commands.jrrp.messages.range.2',
+      '0-10': 'commands.jrrp.messages.range.1',
+      '11-19': 'commands.jrrp.messages.range.2',
       '20-39': 'commands.jrrp.messages.range.3',
       '40-49': 'commands.jrrp.messages.range.4',
-      '50-69': 'commands.jrrp.messages.range.5',
-      '70-89': 'commands.jrrp.messages.range.6',
-      '90-95': 'commands.jrrp.messages.range.7',
-      '96-100': 'commands.jrrp.messages.range.8'
+      '50-64': 'commands.jrrp.messages.range.5',
+      '65-89': 'commands.jrrp.messages.range.6',
+      '90-97': 'commands.jrrp.messages.range.7',
+      '98-100': 'commands.jrrp.messages.range.8'
     }),
     specialMessages: Schema.dict(String).default({
       0: 'commands.jrrp.messages.special.1',
@@ -125,14 +125,17 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 ])
 
-// 工具类定义
+// 配置校验器类
+// 用于验证插件配置的合法性
 class ConfigValidator {
   constructor(private ctx: Context, private config: Config) {}
 
+  // 验证时间格式是否符合 HH:MM 格式
   private validateTimeFormat(time: string): boolean {
     return /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(time);
   }
 
+  // 验证睡眠时间配置
   private validateSleepTime(): void {
     if (this.config.sleep.type === SleepMode.UNTIL &&
         !this.validateTimeFormat(this.config.sleep.until)) {
@@ -140,6 +143,7 @@ class ConfigValidator {
     }
   }
 
+  // 验证运势消息范围配置
   private validateRangeMessages(): void {
     const ranges: [number, number][] = [];
 
@@ -164,13 +168,15 @@ class ConfigValidator {
     }
   }
 
+  // 执行所有验证
   validate(): void {
     this.validateSleepTime();
     this.validateRangeMessages();
   }
 }
 
-// 添加常量配置对象
+// 系统常量定义
+// 包含缓存键、超时时间和其他限制
 const CONSTANTS = {
   CACHE_KEYS: {
     USER: (platform: string, id: string) => `user:${platform}:${id}`,
@@ -188,8 +194,10 @@ const CONSTANTS = {
   }
 };
 
-// 优化工具类，添加缓存大小限制
+// 工具函数集合
+// 包含各种辅助功能如缓存、自动撤回等
 const utils = {
+  // 自动撤回消息
   async autoRecall(session, message, delay = CONSTANTS.TIMEOUTS.AUTO_RECALL) {
     if (!message) return;
 
@@ -213,14 +221,14 @@ const utils = {
     return () => clearTimeout(timer); // 返回取消函数
   },
 
-  // 添加缓存配置
+  // 缓存配置
   cacheConfig: {
     userNameExpiry: 3600000,
     memberListExpiry: 3600000,
     scoreExpiry: 86400000,
   },
 
-  // 增强版用户缓存，包含过期时间
+  // 用户名缓存系统
   userCache: new Map<string, {name: string, expiry: number}>(),
   async getUserName(ctx: Context, session, userId: string) {
     const cacheKey = `${session.platform}:${userId}`;
@@ -240,7 +248,7 @@ const utils = {
     return name;
   },
 
-  // 添加群成员列表缓存
+  // 群成员列表缓存系统
   memberListCache: new Map<string, {
     members: string[],
     expiry: number
@@ -268,7 +276,7 @@ const utils = {
     return validMembers;
   },
 
-  // 添加运势分数缓存
+  // 运势分数缓存系统
   scoreCache: new Map<string, {
     score: number,
     expiry: number
@@ -338,7 +346,7 @@ const utils = {
   // 批量操作工具方法
   async batchProcess<T>(items: T[], processor: (item: T) => Promise<any>, batchSize = 5) {
     const results = [];
-    for (let i = 0; i < items.length; i += batchSize) {
+    for (let i = 0; items.length > i; i += batchSize) {
       const batch = items.slice(i, i + batchSize);
       const batchResults = await Promise.all(batch.map(processor));
       results.push(...batchResults);
@@ -362,6 +370,7 @@ const utils = {
 };
 
 // 特殊模式处理类
+// 处理JRRP特殊码相关功能
 class JrrpSpecialMode {
   private specialCodes = new Map<string, string>();
   private first100Records = new Map<string, boolean>();
@@ -390,13 +399,26 @@ class JrrpSpecialMode {
     return utils.safeExecute(
       async () => {
         const fs = require('fs').promises;
-        const exists = await fs.access(this.JRRP_DATA_PATH)
-          .then(() => true)
-          .catch(() => false);
+        try {
+          const exists = await fs.access(this.JRRP_DATA_PATH)
+            .then(() => true)
+            .catch(() => false);
 
-        if (exists) {
-          const data = JSON.parse(await fs.readFile(this.JRRP_DATA_PATH, 'utf8'));
-          await this.batchLoadData(data);
+          if (exists) {
+            const data = JSON.parse(await fs.readFile(this.JRRP_DATA_PATH, 'utf8'));
+            if (data.codes) {
+              Object.entries(data.codes).forEach(([userId, code]) => {
+                this.specialCodes.set(userId, code as string);
+              });
+            }
+            if (data.first100) {
+              Object.entries(data.first100).forEach(([userId, hadFirst100]) => {
+                this.first100Records.set(userId, hadFirst100 as boolean);
+              });
+            }
+          }
+        } catch (error) {
+          this.ctx.logger.error('Failed to load JRRP data:', error);
         }
       },
       (error) => this.ctx.logger.error('Failed to load JRRP data:', error)
@@ -406,6 +428,10 @@ class JrrpSpecialMode {
   private async saveData(): Promise<void> {
     try {
       const fs = require('fs').promises;
+      // 确保目录存在
+      const dir = require('path').dirname(this.JRRP_DATA_PATH);
+      await fs.mkdir(dir, { recursive: true });
+
       const data = {
         codes: Object.fromEntries(this.specialCodes),
         first100: Object.fromEntries(this.first100Records)
@@ -495,6 +521,7 @@ class JrrpSpecialMode {
 }
 
 // 禁言处理函数
+// 处理禁言操作并发送相关通知
 async function handleMute(session, targetId: string, duration: number, config: Config) {
   try {
     await session.onebot.setGroupBan(session.guildId, targetId, duration);
@@ -528,7 +555,9 @@ async function handleMute(session, targetId: string, duration: number, config: C
 }
 
 // 插件应用函数
+// 注册命令和处理逻辑
 export async function apply(ctx: Context, config: Config) {
+  // 初始化配置验证
   try {
     new ConfigValidator(ctx, config).validate();
   } catch (error) {
@@ -619,6 +648,7 @@ export async function apply(ctx: Context, config: Config) {
     return result;
   }
 
+  // 精致睡眠命令
   ctx.command('sleep')
     .alias('jzsm', '精致睡眠')
     .channelFields(['guildId'])
@@ -658,6 +688,7 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
+  // 点赞命令
   ctx.command('zanwo')
     .alias('赞我')
     .option('u', '-u <target:text>')
@@ -691,32 +722,37 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 修改mute命令中的群成员获取逻辑
+  // 禁言命令处理
   ctx.command('mute [duration:number]')
     .channelFields(['guildId'])
-    .option('u', '-u <target:text>')
-    .option('r', '-r')
+    .option('u', '-u <target:text>') // 指定目标用户选项
+    .option('r', '-r')              // 随机选择目标选项
     .action(async ({ session, options }, duration) => {
+      // 检查是否允许禁言他人
       if (!config.mute.enableMuteOthers && (options?.u || options?.r)) {
         const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'));
         await utils.autoRecall(session, message);
         return;
       }
 
+      // 验证禁言时长是否超过最大限制
       if (duration && duration > config.mute.maxAllowedDuration) {
         const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.mute.maxAllowedDuration]));
         await utils.autoRecall(session, message);
         return;
       }
 
+      // 计算实际禁言时长
       let random = new Random();
-      let muteDuration = duration ? duration * 60
+      let muteDuration = duration ? duration * 60  // 指定时长
         : config.mute.type === MuteDurationType.RANDOM
-          ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60)
-          : config.mute.duration * 60;
+          ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60) // 随机时长
+          : config.mute.duration * 60; // 默认时长
 
+      // 处理随机禁言模式
       if (options?.r) {
         try {
+          // 获取有效群成员列表
           const validMembers = await utils.getCachedMemberList(session);
           if (!validMembers.length) {
             const message = await session.send(session.text('commands.mute.messages.no_valid_members'));
@@ -724,11 +760,13 @@ export async function apply(ctx: Context, config: Config) {
             return;
           }
 
+          // 根据概率决定是禁言自己还是他人
           if (!random.bool(config.mute.probability)) {
             await handleMute(session, session.userId, muteDuration, config);
             return;
           }
 
+          // 随机选择目标并执行禁言
           const targetIndex = random.int(0, validMembers.length - 1);
           await handleMute(session, validMembers[targetIndex], muteDuration, config);
           return;
@@ -739,15 +777,18 @@ export async function apply(ctx: Context, config: Config) {
         }
       }
 
+      // 处理指定目标禁言模式
       if (options?.u) {
         const parsedUser = h.parse(options.u)[0];
         const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
 
+        // 如果目标无效或是自己，则禁言自己
         if (!targetId || targetId === session.userId) {
           await handleMute(session, session.userId, muteDuration, config);
           return;
         }
 
+        // 根据概率决定是禁言自己还是目标
         if (!random.bool(config.mute.probability)) {
           await handleMute(session, session.userId, muteDuration, config);
           return;
@@ -757,54 +798,66 @@ export async function apply(ctx: Context, config: Config) {
         return;
       }
 
+      // 默认禁言自己
       await handleMute(session, session.userId, muteDuration, config);
     });
 
+  // 今日人品命令处理
   ctx.command('jrrp')
-    .option('d', '-d <date>', { type: 'string' })
-    .option('b', '-b <code>', { type: 'string' })
-    .option('g', '-g <number:number>', { fallback: null })
+    .option('d', '-d <date>', { type: 'string' })     // 指定日期选项
+    .option('b', '-b <code>', { type: 'string' })     // 绑定特殊码选项
+    .option('g', '-g <number:number>', { fallback: null }) // 查找特定分数日期选项
     .action(async ({ session, options }) => {
+      // 处理查找特定分数的日期
       if ('g' in options && options.g !== null) {
+        // 验证分数范围
         if (options.g < 0 || options.g > 100) {
           const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
           await utils.autoRecall(session, message);
           return;
         }
 
+        // 向未来查找指定分数的日期
         let currentDate = new Date();
         let daysChecked = 0;
         const maxDaysToCheck = CONSTANTS.LIMITS.MAX_DAYS_TO_CHECK;
 
         while (daysChecked < maxDaysToCheck) {
+          // 计算下一天的运势分数
           currentDate.setDate(currentDate.getDate() + 1);
           const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
           const userDateSeed = `${session.userId}-${dateStr}`;
           const specialCode = jrrpSpecial.getSpecialCode(session.userId);
           const score = await monitoredCalculateScore(userDateSeed, currentDate, specialCode);
 
+          // 找到匹配的分数
           if (score === options.g) {
-            session.send(session.text('commands.jrrp.messages.found_date', [
+            const message = await session.send(session.text('commands.jrrp.messages.found_date', [
               options.g,
               `${currentDate.getFullYear().toString().slice(-2)}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`
             ]));
+            await utils.autoRecall(session, message);
             return;
           }
 
           daysChecked++;
         }
 
+        // 未找到匹配的日期
         const message = await session.send(session.text('commands.jrrp.messages.not_found', [options.g]));
         await utils.autoRecall(session, message);
         return;
       }
 
+      // 处理特殊码绑定
       if ('b' in options) {
         try {
+          // 删除原始命令消息
           if (session.messageId) {
             await session.bot.deleteMessage(session.channelId, session.messageId);
           }
 
+          // 处理解绑操作
           if (!options.b) {
             const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
             await utils.autoRecall(session, message);
@@ -812,12 +865,14 @@ export async function apply(ctx: Context, config: Config) {
             return;
           }
 
+          // 验证特殊码格式
           if (!jrrpSpecial.validateSpecialCode(options.b)) {
             const message = await session.send(session.text('commands.jrrp.messages.special_mode.invalid_code'));
             await utils.autoRecall(session, message);
             return;
           }
 
+          // 绑定特殊码
           const message = await session.send(session.text('commands.jrrp.messages.special_mode.bind_success'));
           await utils.autoRecall(session, message);
           await jrrpSpecial.bindSpecialCode(session.userId, options.b);
@@ -827,11 +882,14 @@ export async function apply(ctx: Context, config: Config) {
         }
       }
 
+      // 处理日期解析
       let targetDate = new Date();
       if (options?.d) {
         const parseDate = (dateStr: string, defaultDate: Date): Date | null => {
+          // 标准化日期字符串
           const normalizedDate = dateStr.replace(/[\s.\/]/g, '-').replace(/-+/g, '-');
 
+          // 匹配不同的日期格式
           const fullMatch = normalizedDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
           const shortYearMatch = normalizedDate.match(/^(\d{1,2})-(\d{1,2})-(\d{1,2})$/);
           const shortMatch = normalizedDate.match(/^(\d{1,2})-(\d{1,2})$/);
@@ -877,6 +935,7 @@ export async function apply(ctx: Context, config: Config) {
           return null;
         };
 
+        // 解析日期并验证
         const date = parseDate(options.d, targetDate);
         if (!date) {
           const message = await session.send(session.text('errors.invalid_date'));
@@ -886,13 +945,16 @@ export async function apply(ctx: Context, config: Config) {
         targetDate = date;
       }
 
+      // 计算运势
       try {
+        // 格式化日期字符串
         const year = targetDate.getFullYear();
         const monthStr = String(targetDate.getMonth() + 1).padStart(2, '0');
         const dayStr = String(targetDate.getDate()).padStart(2, '0');
         const currentDateStr = `${year}-${monthStr}-${dayStr}`;
         const monthDay = `${monthStr}-${dayStr}`;
 
+        // 处理节日特殊消息
         if (config.holidayMessages?.[monthDay]) {
           const holidayMessage = session.text(config.holidayMessages[monthDay]);
           const promptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'));
@@ -912,6 +974,7 @@ export async function apply(ctx: Context, config: Config) {
         const specialCode = jrrpSpecial.getSpecialCode(session.userId);
         luckScore = await monitoredCalculateScore(userDateSeed, targetDate, specialCode);
 
+        // 处理特殊码零分确认
         if (specialCode && luckScore === 0) {
           await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
@@ -922,7 +985,10 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
+        // 构建结果消息
         let resultText = session.text('commands.jrrp.messages.result', [luckScore, userNickname]);
+
+        // 处理特殊分数消息
         if (specialCode) {
           if (luckScore === 100 && jrrpSpecial.isFirst100(session.userId)) {
             await jrrpSpecial.markFirst100(session.userId);
@@ -935,6 +1001,7 @@ export async function apply(ctx: Context, config: Config) {
           resultText += session.text(config.specialMessages[luckScore]);
         }
 
+        // 处理分数范围消息
         if (!config.specialMessages?.[luckScore] && config.rangeMessages) {
           for (const [range, msg] of Object.entries(config.rangeMessages)) {
             const [min, max] = range.split('-').map(Number);
@@ -945,6 +1012,7 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
+        // 发送结果
         await session.send(resultText);
         return;
       } catch (error) {

@@ -36,9 +36,9 @@ jrrpconfig:
       - "取模算法"
       - "正态分布算法"
       - "线性同余算法"
-  notifyAccount: "通知提示账号"
+  notifyAccount: "点赞成功提示账号"
   specialPassword:
-    $desc: "解锁密码（特殊模式）"
+    $desc: "识别码参数"
   rangeMessages:
     $desc: "人品区间配置（最多10项）"
     $inner: "请去本地化页面修改文本，确保范围覆盖0-100"
@@ -51,49 +51,46 @@ jrrpconfig:
 
 commands:
   sleep:
-    description: "精致睡眠"
+    description: "精致睡眠，禁言指定时长"
     usage: |-
       自动禁言指定时长
       支持三种模式：固定时长、指定时间、随机时长
-    examples: |-
-      精致睡眠
     messages:
       success: "晚安，快去睡觉吧，祝你好梦"
-      failed: "晚安失败，请检查机器人是否有权限"
+      failed: "失败，请检查机器人是否有权限"
 
   zanwo:
-    description: "自动为您点赞"
+    description: "自动点赞，可以点赞他人"
     usage: |-
       发送命令即可让机器人赞你，上限50个赞
       -u 为指定用户点赞
     examples: |-
       zanwo -u @用户
-      赞我
     messages:
       success: "点赞完成，记得回赞{0}哦~"
       like_failed: "点赞失败"
-      target_not_found: "找不到指定的用户"
+      target_not_found: "找不到指定用户"
 
   mute:
     description: "禁言自己或他人"
     usage: |-
+      [时长] 指定禁言时长（分钟）
       -u 禁言指定用户
       -r 禁言随机用户
-      [时长] 指定禁言时长（分钟）
     examples: |-
       mute -u/r [1]
     messages:
       errors:
-        no_valid_members: "没有可用的成员可供禁言"
-        target_not_found: "找不到指定的用户"
-        duration_too_long: "禁言时长超过设置上限（{0}分钟）"
+        no_valid_members: "无可禁言成员"
+        target_not_found: "找不到指定用户"
+        duration_too_long: "禁言时长（{0}分钟）超过设置上限"
       notify:
         self_muted: "已将你禁言{0}分钟{1}秒"
         target_muted: "已将{0}禁言{1}分钟{2}秒"
         others_disabled: "已禁用禁言他人功能"
 
   jrrp:
-    description: "今日人品"
+    description: "今日人品，计算今日运势"
     usage: |-
       查看今日人品，支持指定日期
     examples: |-
@@ -105,16 +102,16 @@ commands:
       prompt: "你要看看今天的人品吗？"
       cancel: "好的，祝您今天愉快！"
       error: "计算今日人品时出错"
-      found_date: "你的下一个{0}分会出现在{1}"
-      not_found: "在未来一年内你不会出现{0}分"
-      invalid_number: "请输入0-100之间的整数"
+      found_date: "你的下一个 {0} 分会出现在 {1}"
+      not_found: "在未来一年内你不会出现 {0} 分"
+      invalid_number: "请输入 0-100 之间的整数"
       range:
         1: "……（是百分制哦）"
         2: "？！不会吧……"
-        3: "。呜……"
+        3: "！呜……"
         4: "！勉强还行吧……？"
         5: "！还行啦，还行啦。"
-        6: "。今天运气不错呢！"
+        6: "！今天运气不错呢！"
         7: "！好评如潮！"
         8: "！差点就到 100 了呢……"
         9: "备用"
