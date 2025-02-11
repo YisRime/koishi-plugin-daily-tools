@@ -1,35 +1,33 @@
-// 导入必要的依赖
+// 基础依赖导入
 import { Context, Schema, Random, h } from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
-import * as cron from 'koishi-plugin-cron'
 
-// 插件基本信息
+// 插件元数据定义
 export const name = 'daily-tools'
-export const inject = {
-  required: ['database'],
-  optional: ['cron']
-}
+export const inject = {required: ['database']}
 
-// 今日人品计算的不同算法实现
+// 枚举定义
+// JRRP算法类型枚举
 export const enum JrrpAlgorithm {
-  BASIC = 'basic',      // 基于简单哈希的随机算法
-  GAUSSIAN = 'gaussian', // 基于正态分布的随机算法
-  LINEAR = 'linear'     // 基于线性同余的随机算法
+  BASIC = 'basic',
+  GAUSSIAN = 'gaussian',
+  LINEAR = 'linear'
 }
 
-// 睡眠模式选项
+// 睡眠模式类型枚举
 export const enum SleepMode {
   STATIC = 'static',
   UNTIL = 'until',
   RANDOM = 'random'
 }
 
-// 禁言时长类型
+// 禁言时长类型枚举
 export const enum MuteDurationType {
   STATIC = 'static',
   RANDOM = 'random'
 }
 
+// 插件配置接口定义
 export interface Config {
   sleep: {
     type: SleepMode
@@ -38,8 +36,7 @@ export interface Config {
     min: number
     max: number
   }
-  notifyAccount?: string   // 保留这个用于显示主人提醒
-  enableReminder?: boolean // 保留这个用于控制提醒显示
+  notifyAccount?: string
   choice?: JrrpAlgorithm
   specialPassword?: string
   specialMessages?: Record<number, string>
@@ -57,6 +54,7 @@ export interface Config {
   }
 }
 
+// Schema配置定义
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
     sleep: Schema.object({
@@ -65,23 +63,14 @@ export const Config: Schema<Config> = Schema.intersect([
         Schema.const(SleepMode.UNTIL),
         Schema.const(SleepMode.RANDOM),
       ]).default(SleepMode.STATIC),
-      duration: Schema.number().default(8),   // 修改默认为8小时
+      duration: Schema.number().default(8),
       until: Schema.string().default('08:00'),
-      min: Schema.number().default(6),        // 修改默认为6小时
-      max: Schema.number().default(10),       // 修改默认为10小时
+      min: Schema.number().default(6),
+      max: Schema.number().default(10),
     }),
   }).i18n({
     'zh-CN': require('./locales/zh-CN').sleepconfig,
     'en-US': require('./locales/en-US').sleepconfig,
-  }),
-
-  // 删除 autolike 配置，但保留提醒相关配置
-  Schema.object({
-    notifyAccount: Schema.string(),
-    enableReminder: Schema.boolean().default(true),
-  }).i18n({
-    'zh-CN': require('./locales/zh-CN').autolikeconfig,
-    'en-US': require('./locales/en-US').autolikeconfig,
   }),
 
   Schema.object({
@@ -109,6 +98,7 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(JrrpAlgorithm.GAUSSIAN),
       Schema.const(JrrpAlgorithm.LINEAR),
     ]).default(JrrpAlgorithm.BASIC),
+    notifyAccount: Schema.string(),
     specialPassword: Schema.string().default('PASSWORD').role('secret'),
     rangeMessages: Schema.dict(String).default({
       '0-9': 'commands.jrrp.messages.range.1',
@@ -135,7 +125,7 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 ])
 
-// 配置验证相关类
+// 工具类定义
 class ConfigValidator {
   constructor(private ctx: Context, private config: Config) {}
 
@@ -180,42 +170,147 @@ class ConfigValidator {
   }
 }
 
-// 整合工具函数为一个统一的工具对象
+// 添加常量配置对象
+const CONSTANTS = {
+  CACHE_KEYS: {
+    USER: (platform: string, id: string) => `user:${platform}:${id}`,
+    MEMBER_LIST: (platform: string, guildId: string) => `members:${platform}:${guildId}`,
+    SCORE: (seed: string, type: string) => `score:${seed}:${type}`,
+  },
+  TIMEOUTS: {
+    PROMPT: 10000,
+    AUTO_RECALL: 10000,
+    LIKE_DELAY: 500,
+  },
+  LIMITS: {
+    MAX_DAYS_TO_CHECK: 365,
+    MAX_CACHE_SIZE: 1000,
+  }
+};
+
+// 优化工具类，添加缓存大小限制
 const utils = {
-  // 保留单个统一的自动撤回处理函数
-  async autoRecall(session, message, delay = 10000) {
+  async autoRecall(session, message, delay = CONSTANTS.TIMEOUTS.AUTO_RECALL) {
     if (!message) return;
-    setTimeout(async () => {
-      try {
-        if (Array.isArray(message)) {
-          await Promise.all(message.map(msg => {
+
+    const timer = setTimeout(async () => {
+      if (Array.isArray(message)) {
+        await this.batchProcess(
+          message,
+          async (msg) => {
             const msgId = typeof msg === 'string' ? msg : msg?.id;
-            if (msgId) return session.bot.deleteMessage(session.channelId, msgId);
-          }));
-        } else {
-          const msgId = typeof message === 'string' ? message : message?.id;
-          if (msgId) await session.bot.deleteMessage(session.channelId, msgId);
-        }
-      } catch (e) {
-        console.error('Failed to recall message:', e);
+            if (msgId) return session.bot.deleteMessage(session.channelId, msgId)
+              .catch(() => null);
+          }
+        );
+      } else {
+        const msgId = typeof message === 'string' ? message : message?.id;
+        if (msgId) await session.bot.deleteMessage(session.channelId, msgId)
+          .catch(() => null);
       }
     }, delay);
+
+    return () => clearTimeout(timer); // 返回取消函数
   },
 
-  // 删除 sendAndRecall 函数，因为我们直接使用 autoRecall
+  // 添加缓存配置
+  cacheConfig: {
+    userNameExpiry: 3600000,
+    memberListExpiry: 3600000,
+    scoreExpiry: 86400000,
+  },
 
-  // 带缓存的用户名称获取
-  userCache: new Map<string, string>(),
+  // 增强版用户缓存，包含过期时间
+  userCache: new Map<string, {name: string, expiry: number}>(),
   async getUserName(ctx: Context, session, userId: string) {
     const cacheKey = `${session.platform}:${userId}`;
-    if (this.userCache.has(cacheKey)) return this.userCache.get(cacheKey);
+    const now = Date.now();
+    const cached = this.userCache.get(cacheKey);
+
+    if (cached && cached.expiry > now) {
+      return cached.name;
+    }
+
     const user = await ctx.database.getUser(session.platform, userId);
     const name = user?.name || userId;
-    this.userCache.set(cacheKey, name);
+    this.userCache.set(cacheKey, {
+      name,
+      expiry: now + this.cacheConfig.userNameExpiry
+    });
     return name;
   },
 
-  // 添加全局 hashCode 函数
+  // 添加群成员列表缓存
+  memberListCache: new Map<string, {
+    members: string[],
+    expiry: number
+  }>(),
+
+  async getCachedMemberList(session): Promise<string[]> {
+    const cacheKey = `${session.platform}:${session.guildId}`;
+    const now = Date.now();
+    const cached = this.memberListCache.get(cacheKey);
+
+    if (cached && cached.expiry > now) {
+      return cached.members;
+    }
+
+    const members = await session.onebot.getGroupMemberList(session.guildId);
+    const validMembers = members
+      .filter(m => m.role === 'member' && String(m.user_id) !== String(session.selfId))
+      .map(m => String(m.user_id));
+
+    this.memberListCache.set(cacheKey, {
+      members: validMembers,
+      expiry: now + this.cacheConfig.memberListExpiry
+    });
+
+    return validMembers;
+  },
+
+  // 添加运势分数缓存
+  scoreCache: new Map<string, {
+    score: number,
+    expiry: number
+  }>(),
+
+  getCachedScore(key: string): number | null {
+    const cached = this.scoreCache.get(key);
+    if (cached && cached.expiry > Date.now()) {
+      return cached.score;
+    }
+    return null;
+  },
+
+  setCachedScore(key: string, score: number): void {
+    this.scoreCache.set(key, {
+      score,
+      expiry: Date.now() + this.cacheConfig.scoreExpiry
+    });
+  },
+
+  // 定期清理过期缓存
+  startCacheCleaner(interval = 21600000) {
+    setInterval(() => {
+      const now = Date.now();
+
+      // 清理用户名缓存
+      for (const [key, value] of this.userCache.entries()) {
+        if (value.expiry <= now) this.userCache.delete(key);
+      }
+
+      // 清理群成员列表缓存
+      for (const [key, value] of this.memberListCache.entries()) {
+        if (value.expiry <= now) this.memberListCache.delete(key);
+      }
+
+      // 清理运势分数缓存
+      for (const [key, value] of this.scoreCache.entries()) {
+        if (value.expiry <= now) this.scoreCache.delete(key);
+      }
+    }, interval);
+  },
+
   hashCode(str: string): number {
     let hash = 5381;
     for (let i = 0; str.length > i; i++) {
@@ -223,10 +318,50 @@ const utils = {
       hash = hash >>> 0;
     }
     return hash;
-  }
+  },
+
+  // 添加LRU缓存控制
+  trimCache(cache: Map<any, any>, maxSize = CONSTANTS.LIMITS.MAX_CACHE_SIZE) {
+    if (cache.size > maxSize) {
+      const entriesToDelete = Array.from(cache.keys())
+        .slice(0, cache.size - maxSize);
+      entriesToDelete.forEach(key => cache.delete(key));
+    }
+  },
+
+  // 优化缓存设置方法
+  setCacheValue<T>(cache: Map<string, {value: T, expiry: number}>, key: string, value: T, expiry: number) {
+    cache.set(key, {value, expiry});
+    this.trimCache(cache);
+  },
+
+  // 批量操作工具方法
+  async batchProcess<T>(items: T[], processor: (item: T) => Promise<any>, batchSize = 5) {
+    const results = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+      const batch = items.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(processor));
+      results.push(...batchResults);
+    }
+    return results;
+  },
+
+  // 错误处理增强
+  async safeExecute<T>(
+    operation: () => Promise<T>,
+    errorHandler: (error: Error) => Promise<void> | void,
+    defaultValue?: T
+  ): Promise<T | undefined> {
+    try {
+      return await operation();
+    } catch (error) {
+      await errorHandler(error as Error);
+      return defaultValue;
+    }
+  },
 };
 
-// 新增 JrrpSpecialMode 类，放在 CommandHandler 之前
+// 特殊模式处理类
 class JrrpSpecialMode {
   private specialCodes = new Map<string, string>();
   private first100Records = new Map<string, boolean>();
@@ -236,7 +371,6 @@ class JrrpSpecialMode {
     this.loadData();
   }
 
-  // 移入 getDayOfYear 实现
   private getDayOfYear(date: Date): number {
     const start = new Date(date.getFullYear(), 0, 0);
     const diff = date.getTime() - start.getTime();
@@ -244,7 +378,6 @@ class JrrpSpecialMode {
     return Math.floor(diff / oneDay);
   }
 
-  // 移入 GetHash 实现
   private getHash(str: string): bigint {
     let hash = BigInt(5381);
     for (let i = 0; str.length > i; i++) {
@@ -253,41 +386,39 @@ class JrrpSpecialMode {
     return hash ^ BigInt('0xa98f501bc684032f');
   }
 
-  private loadData(): void {
+  private async loadData(): Promise<void> {
+    return utils.safeExecute(
+      async () => {
+        const fs = require('fs').promises;
+        const exists = await fs.access(this.JRRP_DATA_PATH)
+          .then(() => true)
+          .catch(() => false);
+
+        if (exists) {
+          const data = JSON.parse(await fs.readFile(this.JRRP_DATA_PATH, 'utf8'));
+          await this.batchLoadData(data);
+        }
+      },
+      (error) => this.ctx.logger.error('Failed to load JRRP data:', error)
+    );
+  }
+
+  private async saveData(): Promise<void> {
     try {
-      const fs = require('fs');
-      if (fs.existsSync(this.JRRP_DATA_PATH)) {
-        const data = JSON.parse(fs.readFileSync(this.JRRP_DATA_PATH, 'utf8'));
-        // 加载识别码
-        if (data.codes) {
-          Object.entries(data.codes).forEach(([userId, code]) => {
-            this.specialCodes.set(userId, code as string);
-          });
-        }
-        // 加载首次100记录
-        if (data.first100) {
-          Object.entries(data.first100).forEach(([userId, hadFirst100]) => {
-            this.first100Records.set(userId, hadFirst100 as boolean);
-          });
-        }
-      }
+      const fs = require('fs').promises;
+      const data = {
+        codes: Object.fromEntries(this.specialCodes),
+        first100: Object.fromEntries(this.first100Records)
+      };
+      await fs.writeFile(this.JRRP_DATA_PATH, JSON.stringify(data, null, 2));
     } catch (error) {
-      this.ctx.logger.error('Failed to load JRRP data:', error);
+      this.ctx.logger.error('Failed to save JRRP data:', error);
     }
   }
 
-  private saveData(): void {
-    const fs = require('fs');
-    const data = {
-      codes: Object.fromEntries(this.specialCodes),
-      first100: Object.fromEntries(this.first100Records)
-    };
-    fs.writeFileSync(this.JRRP_DATA_PATH, JSON.stringify(data, null, 2));
-  }
-
-  markFirst100(userId: string): void {
+  async markFirst100(userId: string): Promise<void> {
     this.first100Records.set(userId, true);
-    this.saveData();
+    await this.saveData();
   }
 
   isFirst100(userId: string): boolean {
@@ -298,14 +429,14 @@ class JrrpSpecialMode {
     return /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/i.test(code);
   }
 
-  bindSpecialCode(userId: string, code: string): void {
+  async bindSpecialCode(userId: string, code: string): Promise<void> {
     this.specialCodes.set(userId, code.toUpperCase());
-    this.saveData();
+    await this.saveData();
   }
 
-  removeSpecialCode(userId: string): void {
+  async removeSpecialCode(userId: string): Promise<void> {
     this.specialCodes.delete(userId);
-    this.saveData();
+    await this.saveData();
   }
 
   getSpecialCode(userId: string): string | undefined {
@@ -342,21 +473,38 @@ class JrrpSpecialMode {
 
     return num >= 970 ? 100 : Math.round((num / 969.0) * 99.0);
   }
+
+  // 添加批量处理方法
+  async batchLoadData(data: Record<string, any>) {
+    const operations = [];
+
+    if (data.codes) {
+      operations.push(...Object.entries(data.codes)
+        .map(([userId, code]) =>
+          this.specialCodes.set(userId, code as string)));
+    }
+
+    if (data.first100) {
+      operations.push(...Object.entries(data.first100)
+        .map(([userId, hadFirst100]) =>
+          this.first100Records.set(userId, hadFirst100 as boolean)));
+    }
+
+    await Promise.all(operations);
+  }
 }
 
-
+// 禁言处理函数
 async function handleMute(session, targetId: string, duration: number, config: Config) {
   try {
     await session.onebot.setGroupBan(session.guildId, targetId, duration);
 
-    // 删除触发命令的消息
     if (session.messageId) {
       try {
         await session.bot.deleteMessage(session.channelId, session.messageId);
       } catch {}
     }
 
-    // 只在启用消息提示时发送通知
     if (config.mute.enableMessage) {
       const [minutes, seconds] = [(duration / 60) | 0, duration % 60];
       const isTargetSelf = targetId === session.userId;
@@ -379,6 +527,7 @@ async function handleMute(session, targetId: string, duration: number, config: C
   }
 }
 
+// 插件应用函数
 export async function apply(ctx: Context, config: Config) {
   try {
     new ConfigValidator(ctx, config).validate();
@@ -392,63 +541,95 @@ export async function apply(ctx: Context, config: Config) {
 
   const jrrpSpecial = new JrrpSpecialMode(ctx);
 
-  // 添加计算分数的统一函数
+  // 启动缓存清理器
+  utils.startCacheCleaner();
+
+  // 修改calculateScore函数以使用缓存
   function calculateScore(userDateSeed: string, date: Date, specialCode: string | undefined): number {
+    const cacheKey = `score:${userDateSeed}:${specialCode || 'normal'}`;
+    const cachedScore = utils.getCachedScore(cacheKey);
+    if (cachedScore !== null) {
+      return cachedScore;
+    }
+
+    let score: number;
     if (specialCode) {
-      return jrrpSpecial.calculateSpecialJrrp(specialCode, date, config.specialPassword);
+      score = jrrpSpecial.calculateSpecialJrrp(specialCode, date, config.specialPassword);
+    } else {
+      switch (config.choice) {
+        case 'basic': {
+          score = Math.abs(utils.hashCode(userDateSeed)) % 101;
+          break;
+        }
+        case 'gaussian': {
+          const normalRandom = (seed: string): number => {
+            const hash = utils.hashCode(seed);
+            const randomFactor = Math.sin(hash) * 10000;
+            return randomFactor - Math.floor(randomFactor);
+          };
+
+          const toNormalLuck = (random: number): number => {
+            const u1 = random;
+            const u2 = normalRandom(random.toString());
+            const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+            return Math.min(100, Math.max(0, Math.round(z * 15 + 50)));
+          };
+
+          const dateWeight = (date.getDay() + 1) / 7;
+          const baseRandom = normalRandom(userDateSeed);
+          const weightedRandom = (baseRandom + dateWeight) / 2;
+          score = toNormalLuck(weightedRandom);
+          break;
+        }
+        case 'linear': {
+          const lcgSeed = utils.hashCode(userDateSeed);
+          score = Math.floor(((lcgSeed * 9301 + 49297) % 233280) / 233280 * 101);
+          break;
+        }
+        default: {
+          score = Math.abs(utils.hashCode(userDateSeed)) % 101;
+          break;
+        }
+      }
     }
 
-    switch (config.choice) {
-      case 'basic': {
-        return Math.abs(utils.hashCode(userDateSeed)) % 101;
-      }
-      case 'gaussian': {
-        const normalRandom = (seed: string): number => {
-          const hash = utils.hashCode(seed);
-          const randomFactor = Math.sin(hash) * 10000;
-          return randomFactor - Math.floor(randomFactor);
-        };
-
-        const toNormalLuck = (random: number): number => {
-          const u1 = random;
-          const u2 = normalRandom(random.toString());
-          const z = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-          return Math.min(100, Math.max(0, Math.round(z * 15 + 50)));
-        };
-
-        const dateWeight = (date.getDay() + 1) / 7;
-        const baseRandom = normalRandom(userDateSeed);
-        const weightedRandom = (baseRandom + dateWeight) / 2;
-        return toNormalLuck(weightedRandom);
-      }
-      case 'linear': {
-        const lcgSeed = utils.hashCode(userDateSeed);
-        return Math.floor(((lcgSeed * 9301 + 49297) % 233280) / 233280 * 101);
-      }
-      default: {
-        return Math.abs(utils.hashCode(userDateSeed)) % 101;
-      }
-    }
+    utils.setCachedScore(cacheKey, score);
+    return score;
   }
 
-  // 命令注册部分
+  // 添加性能监控
+  const perfMonitor = {
+    startTime: 0,
+    logPerformance(operation: string) {
+      const duration = Date.now() - this.startTime;
+      if (duration > 100) { // 仅记录耗时超过100ms的操作
+        ctx.logger.debug(`Performance: ${operation} took ${duration}ms`);
+      }
+    },
+    start() {
+      this.startTime = Date.now();
+    }
+  };
+
+  // 在关键操作处使用性能监控
+  async function monitoredCalculateScore(userDateSeed: string, date: Date, specialCode: string | undefined): Promise<number> {
+    perfMonitor.start();
+    const result = calculateScore(userDateSeed, date, specialCode);
+    perfMonitor.logPerformance('calculateScore');
+    return result;
+  }
+
   ctx.command('sleep')
     .alias('jzsm', '精致睡眠')
+    .channelFields(['guildId'])
     .action(async ({ session }) => {
       try {
-        if (!session?.guildId) {
-          const message = await session.send(session.text('commands.sleep.messages.guild_only'));
-          await utils.autoRecall(session, message);
-          return;
-        }
-
         let duration: number;
         const now = new Date();
         const sleep = config.sleep;
 
         switch (sleep.type) {
           case 'static':
-            // 将小时乘60转换为分钟
             duration = Math.max(1, sleep.duration) * 60;
             break;
           case 'until':
@@ -462,7 +643,6 @@ export async function apply(ctx: Context, config: Config) {
             duration = Math.max(1, Math.floor((endTime.getTime() - now.getTime()) / 60000));
             break;
           case 'random':
-            // 将配置小时转换为分钟
             const min = Math.max(1, sleep.min) * 60;
             const max = Math.max(sleep.max, sleep.min) * 60;
             duration = Math.floor(Math.random() * (max - min + 1) + min);
@@ -470,7 +650,6 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         await session.bot.muteGuildMember(session.guildId, session.userId, duration * 60 * 1000);
-        // 移除对晚安消息的自动撤回
         return session.text('commands.sleep.messages.success');
       } catch (error) {
         const message = await session.send(session.text('commands.sleep.messages.failed'));
@@ -483,18 +662,11 @@ export async function apply(ctx: Context, config: Config) {
     .alias('赞我')
     .option('u', '-u <target:text>')
     .action(async ({ session, options }) => {
-      if (!session?.userId) {
-        const message = await session.send(session.text('errors.invalid_session'));
-        await utils.autoRecall(session, message);
-        return;
-      }
-
       let targetId = session.userId;
       if (options?.u) {
         const parsedUser = h.parse(options.u)[0];
         targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
 
-        // 验证目标用户
         if (!targetId) {
           const message = await session.send(session.text('commands.zanwo.messages.target_not_found'));
           await utils.autoRecall(session, message);
@@ -502,44 +674,29 @@ export async function apply(ctx: Context, config: Config) {
         }
       }
 
-      let successfulLikes = 0;
-      const maxRetries = 2;
-
-      for (let retry = 0; retry < maxRetries; retry++) {
-        try {
-          await Promise.all(Array(5).fill(null).map(() =>
-            session.bot.internal.sendLike(targetId, 10)
-          ));
-          successfulLikes = 5;
-
-          const message = await session.send(
-            config.enableReminder
-              ? session.text('commands.zanwo.messages.success', [config.notifyAccount])
-              : session.text('commands.zanwo.messages.success_no_reminder')
-          );
-          await utils.autoRecall(session, message);
-          return null;
-        } catch (error) {
-          if (retry === maxRetries - 1) {
-            const message = await session.send(session.text('commands.zanwo.messages.like_failed'));
-            await utils.autoRecall(session, message);
-            return null;
-          }
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-    });
-
-  ctx.command('mute [duration:number]')
-    .option('u', '-u <target:text>')
-    .option('r', '-r')
-    .action(async ({ session, options }, duration) => {
-      if (!session?.guildId) {
-        const message = await session.send(session.text('commands.mute.messages.errors.guild_only'));
+      try {
+        await Promise.all([
+          ...Array(5).fill(null).map(() =>
+            session.bot.internal.sendLike(targetId, 10).catch(() => null)
+          ),
+          new Promise(resolve => setTimeout(resolve, CONSTANTS.TIMEOUTS.LIKE_DELAY)) // 添加延迟防止请求过快
+        ]);
+        const message = await session.send(session.text('commands.zanwo.messages.success', [config.notifyAccount || '']));
+        await utils.autoRecall(session, message);
+        return;
+      } catch {
+        const message = await session.send(session.text('commands.zanwo.messages.like_failed'));
         await utils.autoRecall(session, message);
         return;
       }
+    });
 
+  // 修改mute命令中的群成员获取逻辑
+  ctx.command('mute [duration:number]')
+    .channelFields(['guildId'])
+    .option('u', '-u <target:text>')
+    .option('r', '-r')
+    .action(async ({ session, options }, duration) => {
       if (!config.mute.enableMuteOthers && (options?.u || options?.r)) {
         const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'));
         await utils.autoRecall(session, message);
@@ -559,24 +716,27 @@ export async function apply(ctx: Context, config: Config) {
           : config.mute.duration * 60;
 
       if (options?.r) {
-        const members = (await session.onebot.getGroupMemberList(session.guildId))
-          .filter(m => m.role === 'member' && String(m.user_id) !== String(session.selfId))
-          .map(m => String(m.user_id));
+        try {
+          const validMembers = await utils.getCachedMemberList(session);
+          if (!validMembers.length) {
+            const message = await session.send(session.text('commands.mute.messages.no_valid_members'));
+            await utils.autoRecall(session, message);
+            return;
+          }
 
-        if (!members.length) {
+          if (!random.bool(config.mute.probability)) {
+            await handleMute(session, session.userId, muteDuration, config);
+            return;
+          }
+
+          const targetIndex = random.int(0, validMembers.length - 1);
+          await handleMute(session, validMembers[targetIndex], muteDuration, config);
+          return;
+        } catch {
           const message = await session.send(session.text('commands.mute.messages.no_valid_members'));
           await utils.autoRecall(session, message);
           return;
         }
-
-        if (!random.bool(config.mute.probability)) {
-          await handleMute(session, session.userId, muteDuration, config);
-          return;
-        }
-
-        const targetId = random.pick(members);
-        await handleMute(session, targetId, muteDuration, config);
-        return;
       }
 
       if (options?.u) {
@@ -605,33 +765,23 @@ export async function apply(ctx: Context, config: Config) {
     .option('b', '-b <code>', { type: 'string' })
     .option('g', '-g <number:number>', { fallback: null })
     .action(async ({ session, options }) => {
-      // 首先确保会话有效
-      if (!session?.userId) {
-        const message = await session.send(session.text('errors.invalid_session'));
-        await utils.autoRecall(session, message);
-        return;
-      }
-
-      // 处理 -g 选项
       if ('g' in options && options.g !== null) {
-        // 验证输入范围是否在0-100之间
         if (options.g < 0 || options.g > 100) {
           const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
           await utils.autoRecall(session, message);
           return;
         }
 
-        // 计算下一次出现该分数的日期
         let currentDate = new Date();
         let daysChecked = 0;
-        const maxDaysToCheck = 365;
+        const maxDaysToCheck = CONSTANTS.LIMITS.MAX_DAYS_TO_CHECK;
 
         while (daysChecked < maxDaysToCheck) {
           currentDate.setDate(currentDate.getDate() + 1);
           const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(currentDate.getDate()).padStart(2, '0')}`;
           const userDateSeed = `${session.userId}-${dateStr}`;
           const specialCode = jrrpSpecial.getSpecialCode(session.userId);
-          const score = calculateScore(userDateSeed, currentDate, specialCode);
+          const score = await monitoredCalculateScore(userDateSeed, currentDate, specialCode);
 
           if (score === options.g) {
             session.send(session.text('commands.jrrp.messages.found_date', [
@@ -649,10 +799,8 @@ export async function apply(ctx: Context, config: Config) {
         return;
       }
 
-      // 处理绑定识别码，确保错误消息自动撤回
       if ('b' in options) {
         try {
-          // 撤回命令消息
           if (session.messageId) {
             await session.bot.deleteMessage(session.channelId, session.messageId);
           }
@@ -660,7 +808,7 @@ export async function apply(ctx: Context, config: Config) {
           if (!options.b) {
             const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
             await utils.autoRecall(session, message);
-            jrrpSpecial.removeSpecialCode(session.userId);
+            await jrrpSpecial.removeSpecialCode(session.userId);
             return;
           }
 
@@ -672,25 +820,20 @@ export async function apply(ctx: Context, config: Config) {
 
           const message = await session.send(session.text('commands.jrrp.messages.special_mode.bind_success'));
           await utils.autoRecall(session, message);
-          jrrpSpecial.bindSpecialCode(session.userId, options.b);
+          await jrrpSpecial.bindSpecialCode(session.userId, options.b);
           return;
         } catch (e) {
           console.error('Failed to handle special code binding:', e);
         }
       }
 
-      // 处理日期参数
       let targetDate = new Date();
       if (options?.d) {
         const parseDate = (dateStr: string, defaultDate: Date): Date | null => {
-          // 统一格式：将.和/转换为-，移除所有空白字符
           const normalizedDate = dateStr.replace(/[\s.\/]/g, '-').replace(/-+/g, '-');
 
-          // 匹配完整日期：YYYY-MM-DD、YYYY-M-D
           const fullMatch = normalizedDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-          // 匹配短年份：YY-MM-DD、YY-M-D、YY/M/D等
           const shortYearMatch = normalizedDate.match(/^(\d{1,2})-(\d{1,2})-(\d{1,2})$/);
-          // 匹配短日期：MM-DD、M-D
           const shortMatch = normalizedDate.match(/^(\d{1,2})-(\d{1,2})$/);
 
           if (fullMatch) {
@@ -704,16 +847,12 @@ export async function apply(ctx: Context, config: Config) {
             return null;
           } else if (shortYearMatch) {
             const [_, year, month, day] = shortYearMatch;
-            // 智能处理两位年份
             let fullYear: number;
             const yearNum = Number(year);
             const currentYear = defaultDate.getFullYear();
             const currentYearLastTwo = currentYear % 100;
 
             if (yearNum >= 0 && yearNum <= 99) {
-              // 如果年份是0-99之间:
-              // 1. 如果年份大于当前年份的后两位+20，认为是19xx年
-              // 2. 如果年份小于等于当前年份的后两位+20，认为是20xx年
               const threshold = (currentYearLastTwo + 20) % 100;
               fullYear = yearNum > threshold ? 1900 + yearNum : 2000 + yearNum;
             } else {
@@ -758,7 +897,7 @@ export async function apply(ctx: Context, config: Config) {
           const holidayMessage = session.text(config.holidayMessages[monthDay]);
           const promptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'));
           await utils.autoRecall(session, promptMessage);
-          const response = await session.prompt(10000);
+          const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
           if (!response) {
             const message = await session.send(session.text('commands.jrrp.messages.cancel'));
             await utils.autoRecall(session, message);
@@ -770,15 +909,12 @@ export async function apply(ctx: Context, config: Config) {
         let luckScore: number
         const userDateSeed = `${session.userId}-${currentDateStr}`
 
-        // 检查是否有绑定的识别码，现在可以正确处理特定日期了
         const specialCode = jrrpSpecial.getSpecialCode(session.userId);
-        luckScore = calculateScore(userDateSeed, targetDate, specialCode);
+        luckScore = await monitoredCalculateScore(userDateSeed, targetDate, specialCode);
 
-        // 特殊模式下的0分特殊处理
         if (specialCode && luckScore === 0) {
           await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
-          const response = await session.prompt(10000);
-          // 只有输入y才继续显示结果
+          const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
           if (!response || response.toLowerCase() !== 'y') {
             const message = await session.send(session.text('commands.jrrp.messages.cancel'));
             await utils.autoRecall(session, message);
@@ -786,11 +922,10 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 根据分数范围和特殊值生成对应消息
         let resultText = session.text('commands.jrrp.messages.result', [luckScore, userNickname]);
         if (specialCode) {
           if (luckScore === 100 && jrrpSpecial.isFirst100(session.userId)) {
-            jrrpSpecial.markFirst100(session.userId);
+            await jrrpSpecial.markFirst100(session.userId);
             resultText += session.text(config.specialMessages[luckScore]) +
                           '\n' + session.text('commands.jrrp.messages.special_mode.first_100');
           } else if (config.specialMessages && luckScore in config.specialMessages) {

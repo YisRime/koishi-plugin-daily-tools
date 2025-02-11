@@ -12,31 +12,6 @@ sleepconfig:
     min: "Minimum Random Duration (Hours)"
     max: "Maximum Random Duration (Hours)"
 
-autolikeconfig:
-  $desc: "Auto-Like Configuration"
-  notifyAccount: "Admin/Notification Account"
-  enableReminder: "Enable Notifications and Owner Like Reminder"
-
-jrrpconfig:
-  $desc: "Daily Luck Configuration"
-  choice:
-    $desc: "Algorithm Selection"
-    $inner:
-      - "Modulo Algorithm"
-      - "Normal Distribution Algorithm"
-      - "Linear Congruential Algorithm"
-  specialPassword:
-    $desc: "Unlock Password (Special Mode)"
-  rangeMessages:
-    $desc: "Luck Range Messages (Max 10 items)"
-    $inner: "Please modify text in localization page, ensure ranges cover 0-100"
-  specialMessages:
-    $desc: "Special Value Messages (Max 10 items)"
-    $inner: "Please modify text in localization page"
-  holidayMessages:
-    $desc: "Special Date Messages (Max 10 items)"
-    $inner: "Please modify text in localization page, ensure dates follow [MM-DD] format"
-
 muteconfig:
   $desc: "Random Mute Configuration"
   mute:
@@ -53,6 +28,27 @@ muteconfig:
     enableMuteOthers: "Allow Muting Others"
     probability: "Success Probability for Muting Others"
 
+jrrpconfig:
+  $desc: "Daily Luck Configuration"
+  choice:
+    $desc: "Algorithm Selection"
+    $inner:
+      - "Modulo Algorithm"
+      - "Normal Distribution Algorithm"
+      - "Linear Congruential Algorithm"
+  notifyAccount: "Notification Account"
+  specialPassword:
+    $desc: "Unlock Password (Special Mode)"
+  rangeMessages:
+    $desc: "Luck Range Messages (Max 10 items)"
+    $inner: "Please modify text in localization page, ensure ranges cover 0-100"
+  specialMessages:
+    $desc: "Special Value Messages (Max 10 items)"
+    $inner: "Please modify text in localization page"
+  holidayMessages:
+    $desc: "Special Date Messages (Max 10 items)"
+    $inner: "Please modify text in localization page, ensure dates follow [MM-DD] format"
+
 commands:
   sleep:
     description: "Sleep Mode"
@@ -62,7 +58,6 @@ commands:
     examples: |-
       sleep
     messages:
-      guild_only: "This feature is only available in group chats"
       success: "Good night, sweet dreams!"
       failed: "Sleep mode failed, please check bot permissions"
 
@@ -75,8 +70,7 @@ commands:
       zanwo -u @user
       likeme
     messages:
-      success: "Likes sent, remember to like my owner ({0}) too~"
-      success_no_reminder: "Likes sent, remember to like my owner too~"
+      success: "Likes sent, remember to like {0} back~"
       like_failed: "Failed to send likes"
       target_not_found: "Specified user not found"
 
@@ -90,7 +84,6 @@ commands:
       mute -u/r [1]
     messages:
       errors:
-        guild_only: "This feature is only available in group chats"
         no_valid_members: "No valid members available for muting"
         target_not_found: "Specified user not found"
         duration_too_long: "Mute duration exceeds limit ({0} minutes)"

@@ -12,11 +12,6 @@ sleepconfig:
     min: "最短随机时长（小时）"
     max: "最长随机时长（小时）"
 
-autolikeconfig:
-  $desc: "点赞配置"
-  notifyAccount: "管理员/通知账号"
-  enableReminder: "启用通知和点赞主人提示"
-
 muteconfig:
   $desc: "随机禁言配置"
   mute:
@@ -41,6 +36,7 @@ jrrpconfig:
       - "取模算法"
       - "正态分布算法"
       - "线性同余算法"
+  notifyAccount: "通知提示账号"
   specialPassword:
     $desc: "解锁密码（特殊模式）"
   rangeMessages:
@@ -62,7 +58,6 @@ commands:
     examples: |-
       精致睡眠
     messages:
-      guild_only: "此功能仅限群聊使用"
       success: "晚安，快去睡觉吧，祝你好梦"
       failed: "晚安失败，请检查机器人是否有权限"
 
@@ -75,8 +70,7 @@ commands:
       zanwo -u @用户
       赞我
     messages:
-      success: "点赞完成，记得赞我主人({0})哦~"
-      success_no_reminder: "点赞完成，记得赞我主人哦~"
+      success: "点赞完成，记得回赞{0}哦~"
       like_failed: "点赞失败"
       target_not_found: "找不到指定的用户"
 
@@ -90,7 +84,6 @@ commands:
       mute -u/r [1]
     messages:
       errors:
-        guild_only: "此功能仅限群聊使用"
         no_valid_members: "没有可用的成员可供禁言"
         target_not_found: "找不到指定的用户"
         duration_too_long: "禁言时长超过设置上限（{0}分钟）"
