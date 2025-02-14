@@ -1,6 +1,7 @@
 import { Context } from 'koishi'
 import { promises as fs } from 'fs'
 import * as path from 'path'
+import { EntertainmentMode, DisplayMode } from '../index';
 
 /**
  * JRRP特殊模式处理类
@@ -194,5 +195,64 @@ export class JrrpSpecialMode {
     }
 
     await Promise.all(operations);
+  }
+
+  /**
+   * 生成一个数学表达式，其计算结果等于目标数值
+   * @param target - 目标数值，表达式计算结果应等于此值
+   * @returns 生成的数学表达式字符串，格式为"表达式 = 结果"
+   */
+  generateExpression(target: number): string {
+    const operators = ['+', '-', '*', '|', '&', '^'];
+    const numbers = [6];
+    const maxDepth = 3;
+
+    const generateRandomExpression = (depth: number, current: number): string => {
+      if (depth >= maxDepth) {
+        return current.toString();
+      }
+
+      const operator = operators[Math.floor(Math.random() * operators.length)];
+      const num = numbers[Math.floor(Math.random() * numbers.length)];
+
+      if (Math.random() < 0.5) {
+        return `(${generateRandomExpression(depth + 1, current)} ${operator} ${num})`;
+      } else {
+        return `${num} ${operator} ${generateRandomExpression(depth + 1, current)}`;
+      }
+    }
+
+    let expression = '';
+    do {
+      expression = generateRandomExpression(0, target);
+    } while (eval(expression) !== target);
+
+    return `${expression} = ${target}`;
+  }
+
+  /**
+   * 根据娱乐模式设置格式化分数显示
+   * @param score - 要格式化的分数
+   * @param date - 当前日期，用于判断是否为愚人节
+   * @param entertainment - 娱乐模式配置对象
+   * @returns 格式化后的分数字符串
+   */
+  formatScore(score: number, date: Date, entertainment: { mode: EntertainmentMode, displayMode: DisplayMode }): string {
+    const isEntertainmentEnabled = entertainment.mode === EntertainmentMode.ENABLED ||
+      (entertainment.mode === EntertainmentMode.APRIL_FOOL &&
+       date.getMonth() === 3 && date.getDate() === 1);
+
+    if (!isEntertainmentEnabled) {
+      return score.toString();
+    }
+
+    switch (entertainment.displayMode) {
+      case DisplayMode.BINARY:
+        return score.toString(2).padStart(7, '0');
+      case DisplayMode.EXPRESSION:
+        return this.generateExpression(score);
+      default:
+        return score.toString();
+    }
   }
 }

@@ -1,4 +1,5 @@
 import { Session, h } from 'koishi';
+import { EntertainmentMode, DisplayMode } from '../index';
 
 /**
  * 常量配置对象，包含各种系统配置值

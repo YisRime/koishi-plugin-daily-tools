@@ -11,28 +11,58 @@ import { CONSTANTS } from './utils/utils'
 export const name = 'daily-tools'
 export const inject = {required: ['database']}
 
-// 枚举定义
-// JRRP算法类型枚举
+/**
+ * JRRP算法类型枚举
+ * @enum {string}
+ */
 export const enum JrrpAlgorithm {
   BASIC = 'basic',
   GAUSSIAN = 'gaussian',
   LINEAR = 'linear'
 }
 
-// 睡眠模式类型枚举
+/**
+ * 睡眠模式类型枚举
+ * @enum {string}
+ */
 export const enum SleepMode {
   STATIC = 'static',
   UNTIL = 'until',
   RANDOM = 'random'
 }
 
-// 禁言时长类型枚举
+/**
+ * 禁言时长类型枚举
+ * @enum {string}
+ */
 export const enum MuteDurationType {
   STATIC = 'static',
   RANDOM = 'random'
 }
 
-// 插件配置接口定义
+/**
+ * 娱乐模式类型枚举
+ * @enum {string}
+ */
+export const enum EntertainmentMode {
+  DISABLED = 'disabled',
+  APRIL_FOOL = 'april_fool',
+  ENABLED = 'enabled'
+}
+
+/**
+ * 显示模式类型枚举
+ * @enum {string}
+ */
+export const enum DisplayMode {
+  BINARY = 'binary',
+  EXPRESSION = 'expression'
+}
+
+/**
+ * 插件配置接口
+ * @interface Config
+ */
 export interface Config {
   sleep: {
     type: SleepMode
@@ -41,14 +71,18 @@ export interface Config {
     min: number
     max: number
   }
-  adminAccount?: string  // 改为 adminAccount
+  adminAccount?: string
   enableNotify?: boolean
-  adminOnly?: boolean    // 添加新配置项
+  adminOnly?: boolean
   choice?: JrrpAlgorithm
   specialPassword?: string
   specialMessages?: Record<number, string>
   rangeMessages?: Record<string, string>
   holidayMessages?: Record<string, string>
+  entertainment?: {
+    mode: EntertainmentMode
+    displayMode: DisplayMode
+  }
   mute: {
     type: MuteDurationType
     duration: number
@@ -114,6 +148,17 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(JrrpAlgorithm.GAUSSIAN),
       Schema.const(JrrpAlgorithm.LINEAR),
     ]).default(JrrpAlgorithm.BASIC),
+    entertainment: Schema.object({
+      mode: Schema.union([
+        Schema.const(EntertainmentMode.DISABLED),
+        Schema.const(EntertainmentMode.APRIL_FOOL),
+        Schema.const(EntertainmentMode.ENABLED),
+      ]).default(EntertainmentMode.APRIL_FOOL),
+      displayMode: Schema.union([
+        Schema.const(DisplayMode.BINARY),
+        Schema.const(DisplayMode.EXPRESSION),
+      ]).default(DisplayMode.BINARY),
+    }),
     specialPassword: Schema.string().default('PASSWORD').role('secret'),
     rangeMessages: Schema.dict(String).default({
       '0-10': 'commands.jrrp.messages.range.1',
@@ -140,23 +185,32 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 ])
 
-// 插件应用函数
-// 注册命令和处理逻辑
+/**
+ * 插件主函数
+ * @param {Context} ctx - Koishi 上下文
+ * @param {Config} config - 插件配置
+ */
 export async function apply(ctx: Context, config: Config) {
-  // 初始化配置验证
   new ConfigValidator(config).validate();
 
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
   const jrrpSpecial = new JrrpSpecialMode(ctx);
-
-  // 启动缓存清理器
   utils.startCacheCleaner();
-
   const zanwoManager = new ZanwoManager(ctx);
 
-  // 修改calculateScore函数以使用缓存
+  /**
+   * 计算用户的运势分数
+   * @description
+   * 支持三种算法模式:
+   * 1. basic - 基础哈希取模算法
+   * 2. gaussian - 高斯分布算法,生成更符合正态分布的分数
+   * 3. linear - 线性同余算法,生成均匀分布的分数
+   *
+   * 特殊代码模式下使用独立的计算逻辑
+   * 结果会被缓存以提高性能
+   */
   function calculateScore(userDateSeed: string, date: Date, specialCode: string | undefined): number {
     const cacheKey = `score:${userDateSeed}:${specialCode || 'normal'}`;
     const cachedScore = utils.getCachedScore(cacheKey);
@@ -170,10 +224,12 @@ export async function apply(ctx: Context, config: Config) {
     } else {
       switch (config.choice) {
         case 'basic': {
+          // 基础算法:对用户ID+日期的哈希值取模
           score = Math.abs(utils.hashCode(userDateSeed)) % 101;
           break;
         }
         case 'gaussian': {
+          // 高斯算法:使用Box-Muller变换生成正态分布随机数
           const normalRandom = (seed: string): number => {
             const hash = utils.hashCode(seed);
             const randomFactor = Math.sin(hash) * 10000;
@@ -194,6 +250,7 @@ export async function apply(ctx: Context, config: Config) {
           break;
         }
         case 'linear': {
+          // 线性同余算法:使用线性同余生成器
           const lcgSeed = utils.hashCode(userDateSeed);
           score = Math.floor(((lcgSeed * 9301 + 49297) % 233280) / 233280 * 101);
           break;
@@ -209,7 +266,16 @@ export async function apply(ctx: Context, config: Config) {
     return score;
   }
 
-  // 精致睡眠命令
+  /**
+   * 精致睡眠命令处理
+   * @description
+   * 三种睡眠模式:
+   * 1. static - 固定时长,使用配置的duration
+   * 2. until - 指定时间,计算到指定时间的时长
+   * 3. random - 随机时长,在min和max之间随机
+   *
+   * 所有模式都确保至少1分钟的禁言时长
+   */
   ctx.command('sleep')
     .alias('jzsm', '精致睡眠')
     .channelFields(['guildId'])
@@ -249,7 +315,18 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 点赞命令
+  /**
+   * 点赞命令处理
+   * @description
+   * 支持以下功能:
+   * 1. -l 查看点赞目标列表
+   * 2. -a/-r 添加/移除点赞目标(仅管理员)
+   * 3. -z 批量点赞所有目标
+   * 4. -u 指定目标点赞
+   * 5. 无参数时点赞自己
+   *
+   * 所有操作都有对应的成功/失败提示
+   */
   ctx.command('zanwo')
     .alias('赞我')
     .option('u', '-u <target:text>')
@@ -258,7 +335,7 @@ export async function apply(ctx: Context, config: Config) {
     .option('r', '-r <target:text>')
     .option('l', '-l')
     .action(async ({ session, options }) => {
-      // 添加列表查看功能
+      // 列表查看功能
       if (options?.l) {
         const targets = zanwoManager.getList();
         if (!targets.length) {
@@ -335,11 +412,24 @@ export async function apply(ctx: Context, config: Config) {
       await utils.autoRecall(session, message);
     });
 
-  // 禁言命令处理
+  /**
+   * 禁言命令处理
+   * @description
+   * 支持以下功能:
+   * 1. 指定时长禁言,[duration]参数
+   * 2. -u 指定目标禁言
+   * 3. -r 随机选择目标禁言
+   *
+   * 特殊处理:
+   * 1. 概率判定是否禁言自己
+   * 2. 目标无效时默认禁言自己
+   * 3. 随机时长在配置范围内
+   * 4. 支持禁言消息提示
+   */
   ctx.command('mute [duration:number]')
     .channelFields(['guildId'])
-    .option('u', '-u <target:text>') // 指定目标用户选项
-    .option('r', '-r')              // 随机选择目标选项
+    .option('u', '-u <target:text>')
+    .option('r', '-r')
     .action(async ({ session, options }, duration) => {
       // 检查是否允许禁言他人
       if (!config.mute.enableMuteOthers && (options?.u || options?.r)) {
@@ -414,7 +504,21 @@ export async function apply(ctx: Context, config: Config) {
       await utils.executeMute(session, session.userId, muteDuration, config.mute.enableMessage);
     });
 
-  // 今日人品命令处理
+  /**
+   * 今日人品命令处理
+   * @description
+   * 支持以下功能:
+   * 1. -d 指定日期查询
+   * 2. -b 特殊代码绑定/解绑
+   * 3. -g 查找特定分数的日期
+   *
+   * 特殊处理:
+   * 1. 节日特殊消息
+   * 2. 特殊代码零分确认
+   * 3. 首次100分特殊提示
+   * 4. 分数范围和特殊分数消息
+   * 5. 支持分数显示格式化
+   */
   ctx.command('jrrp')
     .option('d', '-d <date>', { type: 'string' })
     .option('b', '-b <code>', { type: 'string' })
@@ -518,8 +622,9 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 构建结果消息
-        let resultText = session.text('commands.jrrp.messages.result', [luckScore, userNickname]);
+        // 格式化分数显示
+        const formattedScore = jrrpSpecial.formatScore(luckScore, targetDate, config.entertainment);
+        let resultText = session.text('commands.jrrp.messages.result', [formattedScore, userNickname]);
 
         // 处理特殊分数消息
         if (specialCode) {

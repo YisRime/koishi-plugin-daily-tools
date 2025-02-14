@@ -42,8 +42,20 @@ jrrpconfig:
       - "取模算法"
       - "正态分布算法"
       - "线性同余算法"
-  specialPassword:
-    $desc: "识别码参数"
+  entertainment:
+    $desc: "娱乐设置"
+    mode:
+      $desc: "娱乐模式"
+      $inner:
+        - "关闭"
+        - "仅4月1日"
+        - "开启"
+    displayMode:
+      $desc: "显示模式"
+      $inner:
+        - "二进制"
+        - "表达式"
+  specialPassword: "识别码参数"
   rangeMessages:
     $desc: "人品区间配置（最多10项）"
     $inner: "请去本地化页面修改文本，确保范围覆盖0-100"

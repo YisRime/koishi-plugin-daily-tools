@@ -42,9 +42,20 @@ jrrpconfig:
       - "Modulo Algorithm"
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
-  notifyAccount: "Like Success Notification Account"
-  specialPassword:
-    $desc: "Identification Code Parameters"
+  entertainment:
+    $desc: "Entertainment Settings"
+    mode:
+      $desc: "Entertainment Mode"
+      $inner:
+        - "Disabled"
+        - "April Fool's Only"
+        - "Enabled"
+    displayMode:
+      $desc: "Display Mode"
+      $inner:
+        - "Binary"
+        - "Expression"
+  specialPassword: "Identification Code Parameters"
   rangeMessages:
     $desc: "Luck Range Configuration (max 10 items)"
     $inner: "Please modify text in localization page, ensure range covers 0-100"
