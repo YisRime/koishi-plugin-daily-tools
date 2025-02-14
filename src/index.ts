@@ -41,7 +41,9 @@ export interface Config {
     min: number
     max: number
   }
-  notifyAccount?: string
+  adminAccount?: string  // 改为 adminAccount
+  enableNotify?: boolean
+  adminOnly?: boolean    // 添加新配置项
   choice?: JrrpAlgorithm
   specialPassword?: string
   specialMessages?: Record<number, string>
@@ -98,12 +100,20 @@ export const Config: Schema<Config> = Schema.intersect([
   }),
 
   Schema.object({
+    adminAccount: Schema.string(),
+    enableNotify: Schema.boolean().default(true),
+    adminOnly: Schema.boolean().default(true),
+  }).i18n({
+    'zh-CN': require('./locales/zh-CN').autolikeconfig,
+    'en-US': require('./locales/en-US').autolikeconfig,
+  }),
+
+  Schema.object({
     choice: Schema.union([
       Schema.const(JrrpAlgorithm.BASIC),
       Schema.const(JrrpAlgorithm.GAUSSIAN),
       Schema.const(JrrpAlgorithm.LINEAR),
     ]).default(JrrpAlgorithm.BASIC),
-    notifyAccount: Schema.string(),
     specialPassword: Schema.string().default('PASSWORD').role('secret'),
     rangeMessages: Schema.dict(String).default({
       '0-10': 'commands.jrrp.messages.range.1',
@@ -244,37 +254,41 @@ export async function apply(ctx: Context, config: Config) {
     .alias('赞我')
     .option('u', '-u <target:text>')
     .option('z', '-z')
-    .option('a', '-a <qq:string>')
-    .option('r', '-r <qq:string>')
-    .option('l', '-l')  // 添加新的列表选项
+    .option('a', '-a <target:text>')
+    .option('r', '-r <target:text>')
+    .option('l', '-l')
     .action(async ({ session, options }) => {
       // 添加列表查看功能
       if (options?.l) {
         const targets = zanwoManager.getList();
         if (!targets.length) {
-          const message = await session.send(session.text('commands.zanwo.messages.no_targets'));
-          await utils.autoRecall(session, message);
-          return;
+          return session.send(session.text('commands.zanwo.messages.no_targets'));
         }
 
-        const listMessage = await session.send(
+        return session.send(
           session.text('commands.zanwo.messages.list', [targets.join(', ')])
         );
-        await utils.autoRecall(session, listMessage);
-        return;
       }
 
       // 列表管理操作
       if (options?.a || options?.r) {
-        const operation = options.a ? 'add' : 'remove';
-        const qq = options.a || options.r;
-        const success = await zanwoManager[operation === 'add' ? 'addQQ' : 'removeQQ'](qq);
+        // 检查管理员权限
+        if (config.adminOnly && session.userId !== config.adminAccount) {
+          return session.send(session.text('commands.zanwo.messages.permission_denied'));
+        }
 
-        const message = await session.send(
-          session.text(`commands.zanwo.messages.${operation}_${success ? 'success' : 'failed'}`, [qq])
+        const operation = options.a ? 'add' : 'remove';
+        const targetRaw = options.a || options.r;
+
+        const target = utils.parseTarget(targetRaw);
+        if (!target) {
+          return session.send(session.text('commands.zanwo.messages.target_not_found'));
+        }
+
+        const success = await zanwoManager[operation === 'add' ? 'addQQ' : 'removeQQ'](target);
+        return session.send(
+          session.text(`commands.zanwo.messages.${operation}_${success ? 'success' : 'failed'}`, [target])
         );
-        await utils.autoRecall(session, message);
-        return;
       }
 
       // 批量点赞
@@ -304,10 +318,8 @@ export async function apply(ctx: Context, config: Config) {
       // 单个点赞
       let targetId = session.userId;
       if (options?.u) {
-        const parsedUser = h.parse(options.u)[0];
-        targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
-
-        if (!targetId) {
+        targetId = utils.parseTarget(options.u) || session.userId;
+        if (targetId === session.userId) {
           const message = await session.send(session.text('commands.zanwo.messages.target_not_found'));
           await utils.autoRecall(session, message);
           return;
@@ -317,7 +329,7 @@ export async function apply(ctx: Context, config: Config) {
       const success = await zanwoManager.sendLikes(session, targetId);
       const message = await session.send(
         success
-          ? session.text('commands.zanwo.messages.success', [config.notifyAccount || ''])
+          ? session.text('commands.zanwo.messages.success', [config.enableNotify ? (config.adminAccount || '') : ''])
           : session.text('commands.zanwo.messages.like_failed')
       );
       await utils.autoRecall(session, message);
@@ -380,8 +392,7 @@ export async function apply(ctx: Context, config: Config) {
 
       // 处理指定目标禁言模式
       if (options?.u) {
-        const parsedUser = h.parse(options.u)[0];
-        const targetId = parsedUser?.type === 'at' ? parsedUser.attrs.id : options.u.trim();
+        const targetId = utils.parseTarget(options.u);
 
         // 如果目标无效或是自己，则禁言自己
         if (!targetId || targetId === session.userId) {

@@ -28,6 +28,12 @@ muteconfig:
     enableMuteOthers: "Allow Muting Others"
     probability: "Success Probability for Muting Others"
 
+autolikeconfig:
+  $desc: "Auto-like Configuration"
+  notifyAccount: "Like Success Notification Account"
+  enableNotify: "Enable Like Success Notification"
+  adminOnly: "Admin Only"
+
 jrrpconfig:
   $desc: "Daily Luck Configuration"
   choice:
@@ -64,7 +70,7 @@ commands:
     usage: |-
       Send command to get bot likes, limit 50 likes
       -u @user Like specified user
-      -a/r QQ Add/Remove from batch like list
+      -a/r @user Add/Remove from batch like list
       -z Like all QQ numbers in the list
     messages:
       list: "Current like list: {0}"
@@ -78,6 +84,7 @@ commands:
       success: "Like completed, remember to like {0} back~"
       like_failed: "Like failed"
       target_not_found: "Specified user not found"
+      permission_denied: "Only admin can use it"
 
   mute:
     description: "Mute yourself or others"
@@ -86,7 +93,7 @@ commands:
       -u Mute specified user
       -r Mute random user
     examples: |-
-      mute -u/r [1]
+      mute -u/r @user [1]
     messages:
       errors:
         no_valid_members: "No valid members to mute"

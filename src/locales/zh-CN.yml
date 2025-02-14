@@ -28,6 +28,12 @@ muteconfig:
     enableMuteOthers: "允许禁言他人"
     probability: "禁言他人成功概率"
 
+autolikeconfig:
+  $desc: "自动点赞配置"
+  notifyAccount: "点赞成功提示账号"
+  enableNotify: "启用点赞成功提示"
+  adminOnly: "仅管理员可用"
+
 jrrpconfig:
   $desc: "今日人品配置"
   choice:
@@ -36,7 +42,6 @@ jrrpconfig:
       - "取模算法"
       - "正态分布算法"
       - "线性同余算法"
-  notifyAccount: "点赞成功提示账号"
   specialPassword:
     $desc: "识别码参数"
   rangeMessages:
@@ -64,7 +69,7 @@ commands:
     usage: |-
       发送命令即可让机器人赞你，上限50个赞
       -u @用户 为指定用户点赞
-      -a/r QQ 添加/移除批量点赞列表
+      -a/r @用户 添加/移除批量点赞列表
       -z 对列表中所有用户进行点赞
     messages:
       list: "当前点赞列表：{0}"
@@ -78,6 +83,7 @@ commands:
       success: "点赞完成，记得回赞{0}哦~"
       like_failed: "点赞失败"
       target_not_found: "找不到指定用户"
+      permission_denied: "仅管理员可用"
 
   mute:
     description: "禁言自己或他人"
@@ -86,7 +92,7 @@ commands:
       -u 禁言指定用户
       -r 禁言随机用户
     examples: |-
-      mute -u/r [1]
+      mute -u/r @用户 [1]
     messages:
       errors:
         no_valid_members: "无可禁言成员"

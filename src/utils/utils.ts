@@ -1,4 +1,4 @@
-import { Session } from 'koishi';
+import { Session, h } from 'koishi';
 
 /**
  * 常量配置对象，包含各种系统配置值
@@ -312,4 +312,15 @@ export async function handleHolidayMessage(session: Session, monthDay: string, h
     }
   }
   return true;
+}
+
+/**
+ * 解析目标用户ID
+ * @param {string} input - 输入文本，可以是@消息或直接的用户ID
+ * @returns {string|null} 解析出的用户ID，解析失败则返回null
+ */
+export function parseTarget(input: string): string | null {
+  if (!input?.trim()) return null;
+  const parsedUser = h.parse(input)[0];
+  return parsedUser?.type === 'at' ? parsedUser.attrs.id : input.trim();
 }
