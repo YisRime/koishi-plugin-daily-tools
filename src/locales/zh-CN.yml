@@ -63,10 +63,18 @@ commands:
     description: "自动点赞，可以点赞他人"
     usage: |-
       发送命令即可让机器人赞你，上限50个赞
-      -u 为指定用户点赞
-    examples: |-
-      zanwo -u @用户
+      -u @用户 为指定用户点赞
+      -a/r QQ 添加/移除批量点赞列表
+      -z 对列表中所有用户进行点赞
     messages:
+      list: "当前点赞列表：{0}"
+      add_success: "已添加 {0} 到点赞列表"
+      add_failed: "添加失败"
+      remove_success: "已从点赞列表移除 {0}"
+      remove_failed: "移除失败"
+      no_targets: "点赞列表为空"
+      batch_success: "批量点赞完成！"
+      batch_failed: "批量点赞失败！"
       success: "点赞完成，记得回赞{0}哦~"
       like_failed: "点赞失败"
       target_not_found: "找不到指定用户"

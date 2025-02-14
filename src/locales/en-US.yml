@@ -8,7 +8,7 @@ sleepconfig:
         - "Until Time"
         - "Random Duration"
     duration: "Fixed Mute Duration (hours)"
-    until: "Mute Until (HH:MM)"
+    until: "Mute Until Time (HH:MM)"
     min: "Minimum Random Duration (hours)"
     max: "Maximum Random Duration (hours)"
 
@@ -24,12 +24,12 @@ muteconfig:
     minDuration: "Minimum Random Duration (minutes)"
     maxDuration: "Maximum Random Duration (minutes)"
     maxAllowedDuration: "Maximum Allowed Mute Duration (minutes)"
-    enableMessage: "Enable Mute Notification Messages"
+    enableMessage: "Enable Mute Notification Message"
     enableMuteOthers: "Allow Muting Others"
-    probability: "Probability of Successfully Muting Others"
+    probability: "Success Probability for Muting Others"
 
 jrrpconfig:
-  $desc: "Daily Fortune Configuration"
+  $desc: "Daily Luck Configuration"
   choice:
     $desc: "Algorithm Selection"
     $inner:
@@ -40,13 +40,13 @@ jrrpconfig:
   specialPassword:
     $desc: "Identification Code Parameters"
   rangeMessages:
-    $desc: "Fortune Range Configuration (max 10 items)"
+    $desc: "Luck Range Configuration (max 10 items)"
     $inner: "Please modify text in localization page, ensure range covers 0-100"
   specialMessages:
-    $desc: "Special Value Prompts (max 10 items)"
+    $desc: "Special Value Messages (max 10 items)"
     $inner: "Please modify text in localization page"
   holidayMessages:
-    $desc: "Special Date Prompts (max 10 items)"
+    $desc: "Special Date Messages (max 10 items)"
     $inner: "Please modify text in localization page, ensure dates follow [MM-DD] format"
 
 commands:
@@ -62,11 +62,19 @@ commands:
   zanwo:
     description: "Auto-like, can like others"
     usage: |-
-      Send command to get likes from bot, limit 50 likes
-      -u to like specific user
-    examples: |-
-      zanwo -u @user
+      Send command to get bot likes, limit 50 likes
+      -u @user Like specified user
+      -a/r QQ Add/Remove from batch like list
+      -z Like all QQ numbers in the list
     messages:
+      list: "Current like list: {0}"
+      add_success: "Added {0} to like list"
+      add_failed: "Add failed"
+      remove_success: "Removed {0} from like list"
+      remove_failed: "Remove failed"
+      no_targets: "Like list is empty"
+      batch_success: "Batch like completed!"
+      batch_failed: "Batch like failed!"
       success: "Like completed, remember to like {0} back~"
       like_failed: "Like failed"
       target_not_found: "Specified user not found"
@@ -75,8 +83,8 @@ commands:
     description: "Mute yourself or others"
     usage: |-
       [duration] Specify mute duration (minutes)
-      -u mute specified user
-      -r mute random user
+      -u Mute specified user
+      -r Mute random user
     examples: |-
       mute -u/r [1]
     messages:
@@ -87,38 +95,38 @@ commands:
       notify:
         self_muted: "You have been muted for {0} minutes {1} seconds"
         target_muted: "{0} has been muted for {1} minutes {2} seconds"
-        others_disabled: "Muting others feature has been disabled"
+        others_disabled: "Muting others has been disabled"
 
   jrrp:
-    description: "Daily Fortune, calculate today's luck"
+    description: "Daily Luck, calculate today's fortune"
     usage: |-
-      Check daily fortune, supports specific date
+      Check daily luck, supports specific dates
     examples: |-
       jrrp -d 1970-01-01
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
-      result: "{1} Your fortune value today is: {0}"
-      prompt: "Would you like to see your fortune today?"
+      result: "{1} Your luck value today is: {0}"
+      prompt: "Would you like to check your luck today?"
       cancel: "Alright, have a nice day!"
-      error: "Error calculating daily fortune"
+      error: "Error calculating daily luck"
       found_date: "Your next {0} points will appear on {1}"
       not_found: "You won't get {0} points in the next year"
       invalid_number: "Please enter an integer between 0-100"
       range:
-        1: "... (It's percentile)"
+        1: "...(It's percentage-based)"
         2: "?! No way..."
         3: "! Ugh..."
         4: "! Barely acceptable...?"
-        5: "! Not bad, not bad."
-        6: "! Pretty lucky today!"
-        7: "! Excellent!"
-        8: "! Almost got 100..."
+        5: "! It's okay, it's okay."
+        6: "! Pretty good luck today!"
+        7: "! Overwhelmingly positive!"
+        8: "! Almost reached 100..."
         9: "Reserved"
         10: "Reserved"
       special:
-        1: "! Terrible!"
-        2: "! Fifty-fifty..."
+        1: "! Overwhelmingly negative!"
+        2: "! Perfectly balanced..."
         3: "! 100! 100!!!!"
         4: "Reserved"
         5: "Reserved"
@@ -140,10 +148,10 @@ commands:
         10: "Reserved"
       special_mode:
         invalid_code: "Invalid identification code format!"
-        bind_success: "Identification code bound successfully!"
-        unbind_success: "Identification code unbound successfully!"
-        first_100: "Hidden theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Fortune to confirm"
-        zero_prompt: "Before viewing results, please agree to the following terms:\n1. I acknowledge that PCL2's Daily Fortune feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (e.g., smashing computers) caused by using this software.\n(y/n)"
+        bind_success: "Identification code binding successful!"
+        unbind_success: "Identification code unbinding successful!"
+        first_100: "Hidden theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
+        zero_prompt: "Before viewing results, please agree to the following additional terms:\n1. I acknowledge and understand that PCL2's Daily Luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
 
 errors:
   invalid_time: "Invalid time format"
