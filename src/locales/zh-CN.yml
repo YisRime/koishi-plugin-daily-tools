@@ -1,40 +1,37 @@
-sleepconfig:
-  $desc: "精致睡眠配置"
+config_autolike:
+  $desc: "点赞配置"
+  adminAccount: "管理员账号"
+  enableNotify: "启用点赞成功时显示主人"
+  adminOnly: "仅管理员可配置一键点赞列表"
+
+config_mute:
+  $desc: "禁言配置"
   sleep:
     type:
-      $desc: "禁言模式"
+      $desc: "精致睡眠模式"
       $inner:
         - "固定时长"
         - "截止时间"
         - "随机时长"
     duration: "固定禁言时长（小时）"
-    until: "禁言截止时间（HH:MM）"
-    min: "最短随机时长（小时）"
-    max: "最长随机时长（小时）"
-
-muteconfig:
-  $desc: "随机禁言配置"
+    until: "禁言截止时间(HH:MM)"
+    min: "最短禁言时长（小时）"
+    max: "最长禁言时长（小时）"
   mute:
     type:
-      $desc: "禁言模式"
+      $desc: "普通禁言模式"
       $inner:
         - "固定时长"
         - "随机时长"
-    duration: "固定禁言时长（分钟）"
-    minDuration: "最小随机时长（分钟）"
-    maxDuration: "最大随机时长（分钟）"
-    maxAllowedDuration: "最大允许禁言时长（分钟）"
-    enableMessage: "启用禁言提示消息"
-    enableMuteOthers: "允许禁言他人"
-    probability: "禁言他人成功概率"
+    duration: "固定时长（分钟）"
+    min: "最小时长（分钟）"
+    max: "最大时长（分钟）"
+  maxAllowedDuration: "最大普通禁言限制（分钟）"
+  enableMessage: "启用禁言提示"
+  enableMuteOthers: "允许禁言他人"
+  probability: "禁言成功概率"
 
-autolikeconfig:
-  $desc: "自动点赞配置"
-  notifyAccount: "点赞成功提示账号"
-  enableNotify: "启用点赞成功提示"
-  adminOnly: "仅管理员可用"
-
-jrrpconfig:
+config_jrrp:
   $desc: "今日人品配置"
   choice:
     $desc: "算法选择"
@@ -42,29 +39,32 @@ jrrpconfig:
       - "取模算法"
       - "正态分布算法"
       - "线性同余算法"
-  entertainment:
-    $desc: "娱乐设置"
-    mode:
-      $desc: "娱乐模式"
+  specialCode: "神秘代码——用于计算JRRP"
+  fool:
+    type:
+      $desc: "愚人模式"
       $inner:
         - "关闭"
-        - "仅4月1日"
         - "开启"
+    date: "显示日期(MM-DD)（留空保持开启）"
     displayMode:
       $desc: "显示模式"
       $inner:
         - "二进制"
         - "表达式"
-  specialPassword: "识别码参数"
+    baseNumber: "构造表达式数字"
+
+config_range:
+  $desc: "区间配置"
   rangeMessages:
-    $desc: "人品区间配置（最多10项）"
-    $inner: "请去本地化页面修改文本，确保范围覆盖0-100"
+    $desc: "区间（最多 10 条，文本请在本地化内修改）"
+    $inner: "设置不同区间对应的提示"
   specialMessages:
-    $desc: "特定数值提示（最多10项）"
-    $inner: "请去本地化页面修改文本"
+    $desc: "特殊值（最多 10 条，文本请在本地化内修改）"
+    $inner: "设置特殊值对应的提示"
   holidayMessages:
-    $desc: "特定日期提示（最多10项）"
-    $inner: "请去本地化页面修改文本，确保日期符合[MM-DD]格式"
+    $desc: "日期（最多 10 条，文本请在本地化内修改）"
+    $inner: "设置特定日期（MM-DD）对应的提示"
 
 commands:
   sleep:
@@ -75,6 +75,8 @@ commands:
     messages:
       success: "晚安，快去睡觉吧，祝你好梦"
       failed: "失败，请检查机器人是否有权限"
+    errors:
+      invalid_time: "无效的时间格式"
 
   zanwo:
     description: "自动点赞，可以点赞他人"
@@ -170,7 +172,5 @@ commands:
         unbind_success: "识别码解绑成功！"
         first_100: "隐藏主题 欧皇粉 已解锁！\n前往 PCL2->更多->百宝箱->今日人品 确认"
         zero_prompt: "在查看结果前，请先同意以下附加使用条款：\n1. 我知晓并了解 PLC2 的今日人品功能完全没有出 Bug。\n2. PLC2 不对使用本软件所间接造成的一切财产损失（如砸电脑等）等负责。\n（y/n）"
-
-errors:
-  invalid_time: "无效的时间格式"
-  invalid_date: "无效的日期格式"
+    errors:
+      invalid_date: "无效的日期格式"

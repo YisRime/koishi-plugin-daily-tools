@@ -1,23 +1,29 @@
 import { Context } from 'koishi'
 import { promises as fs } from 'fs'
 import * as path from 'path'
-import { EntertainmentMode, DisplayMode } from '../index';
+import { DisplayMode, FoolConfig, FoolMode } from '..';
 
 /**
  * JRRP特殊模式处理类
- * 用于处理用户特殊代码绑定和今日人品计算规则
+ * 用于处理用户特殊代码绑定和今日人品计算规则，包括特殊代码的验证、绑定、
+ * 移除以及基于特殊代码的JRRP计算。同时支持娱乐模式下的分数显示格式化。
  */
 export class JrrpSpecialMode {
-  // 存储用户ID和特殊代码的映射
+  /** 存储用户ID和特殊代码的映射关系 */
   private specialCodes = new Map<string, string>();
-  // 记录用户是否已获得过100点
+
+  /** 记录用户是否已获得过100点的状态 */
   private first100Records = new Map<string, boolean>();
-  // JRRP数据存储路径
+
+  /** JRRP数据的持久化存储路径 */
   private readonly JRRP_DATA_PATH = 'data/jrrp.json';
 
+  /** 存储数字到表达式的映射，用于生成数学表达式 */
+  private digitExpressions = new Map<number, string>();
+
   /**
-   * 构造函数
-   * @param ctx Koishi上下文
+   * 创建JRRP特殊模式处理实例
+   * @param ctx - Koishi应用上下文，用于日志记录和其他功能
    */
   constructor(private ctx: Context) {
     this.loadData();
@@ -167,12 +173,12 @@ export class JrrpSpecialMode {
       'kjhg'
     ].join(''));
 
-    const div3 = BigInt(3);
-    const combinedHash = (hash1 / div3 + hash2 / div3);
-    const combined = Math.abs(Number(combinedHash) / 527.0);
-    const num = Math.round(combined) % 1001;
+    const divisorThree = BigInt(3);
+    const mergedHash = (hash1 / divisorThree + hash2 / divisorThree);
+    const normalizedHash = Math.abs(Number(mergedHash) / 527.0);
+    const randomValue = Math.round(normalizedHash) % 1001;
 
-    return num >= 970 ? 100 : Math.round((num / 969.0) * 99.0);
+    return randomValue >= 970 ? 100 : Math.round((randomValue / 969.0) * 99.0);
   }
 
   /**
@@ -199,58 +205,226 @@ export class JrrpSpecialMode {
 
   /**
    * 生成一个数学表达式，其计算结果等于目标数值
-   * @param target - 目标数值，表达式计算结果应等于此值
-   * @returns 生成的数学表达式字符串，格式为"表达式 = 结果"
+   * @param target - 目标数值，需要生成的表达式的计算结果
+   * @param baseNumber - 基础数字，用于构建表达式
+   * @returns 返回一个字符串形式的数学表达式
    */
-  generateExpression(target: number): string {
-    const operators = ['+', '-', '*', '|', '&', '^'];
-    const numbers = [6];
-    const maxDepth = 3;
+  generateExpression(target: number, baseNumber: number): string {
+    // 随机选择表达式生成方式
+    const methods = [
+      this.generateDecimalExpression.bind(this),
+      this.generatePrimeFactorsExpression.bind(this),
+      this.generateBitOperationExpression.bind(this),
+      this.generateSqrtExpression.bind(this)
+    ];
+    const selectedMethod = methods[Math.floor(Math.random() * methods.length)];
+    return selectedMethod(target, baseNumber);
+  }
 
-    const generateRandomExpression = (depth: number, current: number): string => {
-      if (depth >= maxDepth) {
-        return current.toString();
+  /**
+   * 初始化基础数字的表达式映射
+   * @param baseNumber - 用于生成表达式的基础数字
+   */
+  private initDigitExpressions(baseNumber: number): void {
+    if (this.digitExpressions.size) return;
+
+    const b = baseNumber;
+    this.digitExpressions.set(b, String(b));
+    this.digitExpressions.set(0, `(${b} ^ ${b})`);           // 最简异或
+    this.digitExpressions.set(1, `(${b} / ${b})`);           // 最简除法
+    this.digitExpressions.set(2, `(${b} >> (${b} / ${b})`);  // 右移1位
+    this.digitExpressions.set(3, `(${b} / (${b} / ${b} << ${b} / ${b}))`); // 除以2
+    this.digitExpressions.set(4, `(${b} & (${b} | (${b} / ${b})))`);  // 位运算组合
+    this.digitExpressions.set(5, `(${b} - ${b} / ${b})`);    // 减1
+    this.digitExpressions.set(7, `(${b} + ${b} / ${b})`);    // 加1
+    this.digitExpressions.set(8, `(${b} + ${b} / ${b} << ${b} / ${b})`); // 加2
+    this.digitExpressions.set(9, `(${b} | (${b} >> ${b} / ${b}))`);  // 位运算
+    this.digitExpressions.set(10, `((${b} << ${b} / ${b}) + (${b} >> ${b} / ${b}))`); // 10的特殊处理
+  }
+
+  /**
+   * 获取指定数字对应的数学表达式
+   * @param n - 需要获取表达式的数字
+   * @param baseNumber - 用于生成表达式的基础数字
+   * @returns 返回对应数字的表达式字符串
+   */
+  private getDigitExpr(n: number, baseNumber: number): string {
+    this.initDigitExpressions(baseNumber);
+    return this.digitExpressions.get(n) || String(n);
+  }
+
+  /**
+   * 使用十进制形式生成目标数值的表达式
+   * @param target - 目标数值
+   * @param baseNumber - 基础数字
+   * @returns 返回一个基于十进制的数学表达式
+   */
+  private generateDecimalExpression(target: number, baseNumber: number): string {
+    // 处理特殊情况
+    if (target === 0) return this.getDigitExpr(0, baseNumber);
+    if (target === 100) return `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+    if (target <= 10) return this.getDigitExpr(target, baseNumber);
+
+    // 处理11-99的数字
+    const tens = Math.floor(target / 10);
+    const ones = target % 10;
+
+    if (tens === 1) {
+      return `(${this.getDigitExpr(10, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
+    }
+    if (ones === 0) {
+      return `(${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+    }
+    return `((${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)}) + ${this.getDigitExpr(ones, baseNumber)})`;
+  }
+
+  /**
+   * 使用质因数分解的方式生成目标数值的表达式
+   * @param target - 目标数值
+   * @param baseNumber - 基础数字
+   * @returns 返回一个基于质因数分解的数学表达式
+   */
+  private generatePrimeFactorsExpression(target: number, baseNumber: number): string {
+    if (target <= 1) return this.generateDecimalExpression(target, baseNumber);
+
+    // 尝试使用大数因式分解
+    const tryDecompose = (num: number): number[] | null => {
+      // 从大到小尝试基础数字
+      for (let i = 9; i >= 2; i--) {
+        if (num % i === 0) {
+          const quotient = num / i;
+          if (quotient <= 9) {
+            return [i, quotient];
+          }
+          // 递归尝试分解商
+          const subResult = tryDecompose(quotient);
+          if (subResult) {
+            return [i, ...subResult];
+          }
+        }
+      }
+      return null;
+    };
+
+    // 寻找最近的可分解数
+    const findNearestDecomposable = (num: number): [number, number] => {
+      let lower = num - 1;
+      let upper = num + 1;
+
+      while (lower > 1 || upper <= 100) {
+        if (lower > 1 && tryDecompose(lower)) {
+          return [lower, num - lower]; // 需要加上差值
+        }
+        if (upper <= 100 && tryDecompose(upper)) {
+          return [upper, lower - upper]; // 需要减去差值
+        }
+        lower--;
+        upper++;
       }
 
-      const operator = operators[Math.floor(Math.random() * operators.length)];
-      const num = numbers[Math.floor(Math.random() * numbers.length)];
+      return [num, 0]; // 降级为十进制表示
+    };
 
-      if (Math.random() < 0.5) {
-        return `(${generateRandomExpression(depth + 1, current)} ${operator} ${num})`;
-      } else {
-        return `${num} ${operator} ${generateRandomExpression(depth + 1, current)}`;
-      }
+    // 尝试直接分解
+    const factors = tryDecompose(target);
+    if (factors) {
+      const factorExprs = factors.map(f => this.generateDecimalExpression(f, baseNumber));
+      return `(${factorExprs.join(' * ')})`;
     }
 
-    let expression = '';
-    do {
-      expression = generateRandomExpression(0, target);
-    } while (eval(expression) !== target);
+    // 使用最近的可分解数
+    const [base, diff] = findNearestDecomposable(target);
+    if (diff === 0) {
+      return this.generateDecimalExpression(target, baseNumber);
+    }
 
-    return `${expression} = ${target}`;
+    const baseExpr = this.generatePrimeFactorsExpression(base, baseNumber);
+    const diffExpr = this.generateDecimalExpression(Math.abs(diff), baseNumber);
+
+    // 根据差值是正数还是负数决定加减
+    return diff > 0
+      ? `(${baseExpr} + ${diffExpr})`
+      : `(${baseExpr} - ${diffExpr})`;
+  }
+
+  /**
+   * 使用位运算生成目标数值的表达式
+   * @param target - 目标数值
+   * @param baseNumber - 基础数字
+   * @returns 返回一个基于位运算的数学表达式
+   */
+  private generateBitOperationExpression(target: number, baseNumber: number): string {
+    if (target <= 10) return this.getDigitExpr(target, baseNumber);
+
+    // 尝试使用位移和基本运算组合
+    const shifts = Math.floor(Math.log2(target));
+    const remainder = target - (1 << shifts);
+
+    if (remainder === 0) {
+      return `(${baseNumber} << ${this.generateDecimalExpression(shifts, baseNumber)})`;
+    } else if (remainder > 0) {
+      return `((${baseNumber} << ${this.generateDecimalExpression(shifts, baseNumber)}) + ${this.generateDecimalExpression(remainder, baseNumber)})`;
+    }
+
+    // 如果以上方法不适用，回退到十进制表达式
+    return this.generateDecimalExpression(target, baseNumber);
+  }
+
+  /**
+   * 使用平方根相关运算生成目标数值的表达式
+   * @param target - 目标数值
+   * @param baseNumber - 基础数字
+   * @returns 返回一个基于平方根运算的数学表达式
+   */
+  private generateSqrtExpression(target: number, baseNumber: number): string {
+    const sqrt = Math.floor(Math.sqrt(target));
+    const remainder = target - sqrt * sqrt;
+
+    if (remainder === 0) {
+      const innerExpr = this.generateDecimalExpression(sqrt, baseNumber);
+      return `(${innerExpr} * ${innerExpr})`;
+    }
+
+    if (remainder > 0 && remainder <= 10) {
+      const sqrtExpr = this.generateDecimalExpression(sqrt, baseNumber);
+      const remExpr = this.getDigitExpr(remainder, baseNumber);
+      return `((${sqrtExpr} * ${sqrtExpr}) + ${remExpr})`;
+    }
+
+    return this.generateDecimalExpression(target, baseNumber);
   }
 
   /**
    * 根据娱乐模式设置格式化分数显示
-   * @param score - 要格式化的分数
-   * @param date - 当前日期，用于判断是否为愚人节
-   * @param entertainment - 娱乐模式配置对象
-   * @returns 格式化后的分数字符串
+   * @param score - 要格式化的分数值
+   * @param date - 当前日期，用于判断是否在特定日期启用娱乐模式
+   * @param foolConfig - 娱乐模式的配置对象，包含显示类型和基础数字等设置
+   * @returns 根据配置格式化后的分数字符串
    */
-  formatScore(score: number, date: Date, entertainment: { mode: EntertainmentMode, displayMode: DisplayMode }): string {
-    const isEntertainmentEnabled = entertainment.mode === EntertainmentMode.ENABLED ||
-      (entertainment.mode === EntertainmentMode.APRIL_FOOL &&
-       date.getMonth() === 3 && date.getDate() === 1);
-
-    if (!isEntertainmentEnabled) {
+  public formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
+    if (foolConfig.type !== FoolMode.ENABLED) {
       return score.toString();
     }
 
-    switch (entertainment.displayMode) {
+    // 如果 date 为空字符串，则始终启用
+    if (foolConfig.date) {
+      const [targetMonth, targetDay] = foolConfig.date.split('-').map(Number);
+      const currentMonth = date.getMonth() + 1;
+      const currentDay = date.getDate();
+
+      // 日期不匹配则返回原始分数
+      if (currentMonth !== targetMonth || currentDay !== targetDay) {
+        return score.toString();
+      }
+    }
+
+    // 根据显示模式处理分数
+    switch (foolConfig.displayMode) {
       case DisplayMode.BINARY:
-        return score.toString(2).padStart(7, '0');
+        return score.toString(2);
       case DisplayMode.EXPRESSION:
-        return this.generateExpression(score);
+        const base = foolConfig.baseNumber ?? 6;
+        return this.generateExpression(score, base);
       default:
         return score.toString();
     }

@@ -1,5 +1,4 @@
 import { Session, h } from 'koishi';
-import { EntertainmentMode, DisplayMode } from '../index';
 
 /**
  * 常量配置对象，包含各种系统配置值
@@ -84,25 +83,25 @@ export async function autoRecall(session, message, delay = CONSTANTS.TIMEOUTS.AU
  * @returns {Promise<string[]>} 群成员ID列表
  */
 export async function getCachedMemberList(session): Promise<string[]> {
-  const cacheKey = `${session.platform}:${session.guildId}`;
-  const now = Date.now();
-  const cached = cacheStore.memberListCache.get(cacheKey);
+  const memberCacheKey = `${session.platform}:${session.guildId}`; // 改进：cacheKey -> memberCacheKey
+  const currentTime = Date.now(); // 改进：now -> currentTime
+  const cachedMembers = cacheStore.memberListCache.get(memberCacheKey); // 改进：cached -> cachedMembers
 
-  if (cached && cached.expiry > now) {
-    return cached.members;
+  if (cachedMembers && cachedMembers.expiry > currentTime) {
+    return cachedMembers.members;
   }
 
-  const members = await session.onebot.getGroupMemberList(session.guildId);
-  const validMembers = members
-    .filter(m => m.role === 'member' && String(m.user_id) !== String(session.selfId))
-    .map(m => String(m.user_id));
+  const memberList = await session.onebot.getGroupMemberList(session.guildId); // 改进：members -> memberList
+  const filteredMembers = memberList // 改进：validMembers -> filteredMembers
+    .filter(member => member.role === 'member' && String(member.user_id) !== String(session.selfId))
+    .map(member => String(member.user_id));
 
-  cacheStore.memberListCache.set(cacheKey, {
-    members: validMembers,
-    expiry: now + cacheConfig.memberListExpiry
+  cacheStore.memberListCache.set(memberCacheKey, {
+    members: filteredMembers,
+    expiry: currentTime + cacheConfig.memberListExpiry
   });
 
-  return validMembers;
+  return filteredMembers;
 }
 
 /**
@@ -149,16 +148,16 @@ export function startCacheCleaner(interval = 21600000) {
 
 /**
  * 计算字符串的哈希值
- * @param {string} str - 输入字符串
+ * @param {string} inputStr - 输入字符串
  * @returns {number} 32位无符号整数哈希值
  */
-export function hashCode(str: string): number {
-  let hash = 5381;
-  for (let i = 0; str.length > i; i++) {
-    hash = ((hash << 5) + hash) + str.charCodeAt(i);
-    hash = hash >>> 0;
+export function hashCode(inputStr: string): number { // 改进：str -> inputStr
+  let hashValue = 5381; // 改进：hash -> hashValue
+  for (let charIndex = 0; inputStr.length > charIndex; charIndex++) { // 改进：i -> charIndex
+    hashValue = ((hashValue << 5) + hashValue) + inputStr.charCodeAt(charIndex);
+    hashValue = hashValue >>> 0;
   }
-  return hash;
+  return hashValue;
 }
 
 /**
@@ -168,57 +167,39 @@ export function hashCode(str: string): number {
  * @returns {Date|null} 解析后的日期对象，解析失败则返回null
  */
 export function parseDate(dateStr: string, defaultDate: Date): Date | null {
-  // 标准化日期字符串
-  const normalizedDate = dateStr.replace(/[\s.\/]/g, '-').replace(/-+/g, '-');
+  // 标准化日期字符串，支持点号和斜杠分隔
+  const normalized = dateStr.replace(/[\s.\/]/g, '-').replace(/-+/g, '-');
+  if (!/^[\d-]+$/.test(normalized)) return null;
 
-  // 验证输入是否为纯数字和分隔符
-  if (!/^[\d-]+$/.test(normalizedDate)) {
-    return null;
-  }
+  // 处理可能的前导零
+  const parts = normalized.split('-').map(part => parseInt(part.replace(/^0+/, ''), 10));
+  if (!parts.every(n => n > 0)) return null;
 
-  // 匹配不同的日期格式，但要求数字部分必须是纯数字（不含前导零）
-  const fullMatch = normalizedDate.match(/^([1-9]\d{3})-([1-9]|1[0-2]|0?[1-9])-([1-9]|[12]\d|3[01]|0?[1-9])$/);
-  const shortYearMatch = normalizedDate.match(/^([1-9]|[1-9]\d)-([1-9]|1[0-2]|0?[1-9])-([1-9]|[12]\d|3[01]|0?[1-9])$/);
-  const shortMatch = normalizedDate.match(/^([1-9]|1[0-2]|0?[1-9])-([1-9]|[12]\d|3[01]|0?[1-9])$/);
+  let year: number, month: number, day: number;
 
-  if (fullMatch) {
-    const [_, year, month, day] = fullMatch.map(Number);
-    const date = new Date(year, month - 1, day);
-    if (date.getFullYear() === year &&
-        date.getMonth() === month - 1 &&
-        date.getDate() === day) {
-      return date;
-    }
-    return null;
-  } else if (shortYearMatch) {
-    const [_, year, month, day] = shortYearMatch.map(Number);
-    let fullYear: number;
-    const currentYear = defaultDate.getFullYear();
-    const currentYearLastTwo = currentYear % 100;
-
-    if (year >= 0 && year <= 99) {
-      const threshold = (currentYearLastTwo + 20) % 100;
-      fullYear = year > threshold ? 1900 + year : 2000 + year;
-    } else {
+  switch (parts.length) {
+    case 3: // YYYY-MM-DD 或 YY-MM-DD
+      [year, month, day] = parts;
+      if (year < 100) {
+        const currentYear = defaultDate.getFullYear();
+        const threshold = (currentYear % 100 + 20) % 100;
+        year = year > threshold ? 1900 + year : 2000 + year;
+      }
+      break;
+    case 2: // MM-DD
+      [month, day] = parts;
+      year = defaultDate.getFullYear();
+      break;
+    default:
       return null;
-    }
-
-    const date = new Date(fullYear, month - 1, day);
-    if (date.getMonth() === month - 1 &&
-        date.getDate() === day) {
-      return date;
-    }
-    return null;
-  } else if (shortMatch) {
-    const [_, month, day] = shortMatch.map(Number);
-    const date = new Date(defaultDate.getFullYear(), month - 1, day);
-    if (date.getMonth() === month - 1 &&
-        date.getDate() === day) {
-      return date;
-    }
-    return null;
   }
-  return null;
+
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  ) ? date : null;
 }
 
 /**
@@ -276,16 +257,16 @@ export async function findDateForScore(
 ): Promise<void> {
   const currentDate = new Date();
 
-  for (let i = 1; i <= CONSTANTS.LIMITS.MAX_DAYS_TO_CHECK; i++) {
-    const checkDate = new Date(currentDate);
-    checkDate.setDate(currentDate.getDate() + i);
+  for (let daysAhead = 1; daysAhead <= CONSTANTS.LIMITS.MAX_DAYS_TO_CHECK; daysAhead++) {
+    const futureDate = new Date(currentDate);
+    futureDate.setDate(currentDate.getDate() + daysAhead);
 
-    const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+    const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
     const userDateSeed = `${session.userId}-${dateStr}`;
-    const score = calculateScore(userDateSeed, checkDate, specialCode);
+    const score = calculateScore(userDateSeed, futureDate, specialCode);
 
     if (score === targetScore) {
-      const formattedDate = `${checkDate.getFullYear().toString().slice(-2)}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+      const formattedDate = `${futureDate.getFullYear().toString().slice(-2)}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
       await session.send(session.text('commands.jrrp.messages.found_date', [targetScore, formattedDate]));
       return;
     }

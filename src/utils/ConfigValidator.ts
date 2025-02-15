@@ -36,25 +36,25 @@ export class ConfigValidator {
    * @throws {Error} 当范围格式无效、有重叠或间隙时抛出错误
    */
   private validateRangeMessages(): void {
-    const ranges: [number, number][] = [];
+    const rangeIntervals: [number, number][] = [];
 
-    for (const range of Object.keys(this.config.rangeMessages)) {
-      const [start, end] = range.split('-').map(Number);
+    for (const rangeKey of Object.keys(this.config.rangeMessages)) {
+      const [start, end] = rangeKey.split('-').map(Number);
       if (isNaN(start) || isNaN(end) || start > end || start < 0 || end > 100) {
-        throw new Error(`Invalid range format: ${range}`);
+        throw new Error(`Invalid range format: ${rangeKey}`);
       }
-      ranges.push([start, end]);
+      rangeIntervals.push([start, end]);
     }
 
-    ranges.sort((a, b) => a[0] - b[0]);
+    rangeIntervals.sort((firstRange, secondRange) => firstRange[0] - secondRange[0]);
 
-    if (ranges[0][0] !== 0 || ranges[ranges.length - 1][1] !== 100) {
+    if (rangeIntervals[0][0] !== 0 || rangeIntervals[rangeIntervals.length - 1][1] !== 100) {
       throw new Error('Ranges must completely cover 0 to 100');
     }
 
-    for (let i = 1; i < ranges.length; i++) {
-      if (ranges[i][0] !== ranges[i-1][1] + 1) {
-        throw new Error(`Overlap or gap between ranges ${ranges[i-1][1]} and ${ranges[i][0]}`);
+    for (let i = 1; i < rangeIntervals.length; i++) {
+      if (rangeIntervals[i][0] !== rangeIntervals[i-1][1] + 1) {
+        throw new Error(`Overlap or gap between ranges ${rangeIntervals[i-1][1]} and ${rangeIntervals[i][0]}`);
       }
     }
   }

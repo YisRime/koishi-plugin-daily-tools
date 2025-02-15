@@ -1,5 +1,5 @@
 // 基础依赖导入和插件元数据定义
-import { Context, Schema, Random, h } from 'koishi'
+import { Context, Schema, Random} from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
 import { ZanwoManager } from './utils/ZanwoManager'
 import { ConfigValidator } from './utils/ConfigValidator'
@@ -10,16 +10,6 @@ import { CONSTANTS } from './utils/utils'
 // 插件元数据定义
 export const name = 'daily-tools'
 export const inject = {required: ['database']}
-
-/**
- * JRRP算法类型枚举
- * @enum {string}
- */
-export const enum JrrpAlgorithm {
-  BASIC = 'basic',
-  GAUSSIAN = 'gaussian',
-  LINEAR = 'linear'
-}
 
 /**
  * 睡眠模式类型枚举
@@ -41,12 +31,21 @@ export const enum MuteDurationType {
 }
 
 /**
+ * JRRP算法类型枚举
+ * @enum {string}
+ */
+export const enum JrrpAlgorithm {
+  BASIC = 'basic',
+  GAUSSIAN = 'gaussian',
+  LINEAR = 'linear'
+}
+
+/**
  * 娱乐模式类型枚举
  * @enum {string}
  */
-export const enum EntertainmentMode {
+export const enum FoolMode {
   DISABLED = 'disabled',
-  APRIL_FOOL = 'april_fool',
   ENABLED = 'enabled'
 }
 
@@ -61,85 +60,107 @@ export const enum DisplayMode {
 
 /**
  * 插件配置接口
- * @interface Config
  */
+export interface SleepConfig {
+  type: SleepMode
+  duration?: number // static模式
+  until?: string   // until模式
+  min?: number     // random模式
+  max?: number     // random模式
+}
+
+export interface MuteConfig {
+  type: MuteDurationType
+  duration?: number // static模式
+  min?: number     // random模式
+  max?: number     // random模式
+}
+
+export interface FoolConfig {
+  type: FoolMode
+  date?: string
+  displayMode?: DisplayMode
+  baseNumber?: number // expression模式专用
+}
+
 export interface Config {
-  sleep: {
-    type: SleepMode
-    duration: number
-    until: string
-    min: number
-    max: number
-  }
+  // autolike相关
   adminAccount?: string
   enableNotify?: boolean
   adminOnly?: boolean
-  choice?: JrrpAlgorithm
-  specialPassword?: string
-  specialMessages?: Record<number, string>
+
+  // mute相关
+  sleep: SleepConfig
+  mute: MuteConfig
+  maxAllowedDuration: number
+  enableMessage: boolean
+  enableMuteOthers: boolean
+  probability: number
+
+  // jrrp相关
+  choice: JrrpAlgorithm
+  specialCode: string
+  fool: FoolConfig
   rangeMessages?: Record<string, string>
+  specialMessages?: Record<number, string>
   holidayMessages?: Record<string, string>
-  entertainment?: {
-    mode: EntertainmentMode
-    displayMode: DisplayMode
-  }
-  mute: {
-    type: MuteDurationType
-    duration: number
-    minDuration: number
-    maxDuration: number
-    maxAllowedDuration: number
-    probability: number
-    enableMessage: boolean
-    enableMuteOthers: boolean
-  }
 }
 
 // Schema配置定义
 export const Config: Schema<Config> = Schema.intersect([
   Schema.object({
-    sleep: Schema.object({
-      type: Schema.union([
-        Schema.const(SleepMode.STATIC),
-        Schema.const(SleepMode.UNTIL),
-        Schema.const(SleepMode.RANDOM),
-      ]).default(SleepMode.STATIC),
-      duration: Schema.number().default(8),
-      until: Schema.string().default('08:00'),
-      min: Schema.number().default(6),
-      max: Schema.number().default(10),
-    }),
-  }).i18n({
-    'zh-CN': require('./locales/zh-CN').sleepconfig,
-    'en-US': require('./locales/en-US').sleepconfig,
-  }),
-
-  Schema.object({
-    mute: Schema.object({
-      type: Schema.union([
-        Schema.const(MuteDurationType.STATIC),
-        Schema.const(MuteDurationType.RANDOM),
-      ]).default(MuteDurationType.RANDOM),
-      duration: Schema.number().default(5),
-      minDuration: Schema.number().default(0.1),
-      maxDuration: Schema.number().default(10),
-      maxAllowedDuration: Schema.number().default(1440),
-      enableMessage: Schema.boolean().default(false),
-      enableMuteOthers: Schema.boolean().default(true),
-      probability: Schema.number().default(0.5).min(0).max(1),
-    }),
-  }).i18n({
-    'zh-CN': require('./locales/zh-CN').muteconfig,
-    'en-US': require('./locales/en-US').muteconfig,
-  }),
-
-  Schema.object({
     adminAccount: Schema.string(),
     enableNotify: Schema.boolean().default(true),
     adminOnly: Schema.boolean().default(true),
   }).i18n({
-    'zh-CN': require('./locales/zh-CN').autolikeconfig,
-    'en-US': require('./locales/en-US').autolikeconfig,
+    'zh-CN': require('./locales/zh-CN').config_autolike,
+    'en-US': require('./locales/en-US').config_autolike,
+  }),
+
+  Schema.object({
+    sleep: Schema.intersect([
+      Schema.object({
+        type: Schema.union([SleepMode.STATIC, SleepMode.UNTIL, SleepMode.RANDOM]),
+      }).default({ type: SleepMode.STATIC }),
+      Schema.union([
+        Schema.object({
+          type: Schema.const(SleepMode.STATIC).required(),
+          duration: Schema.number().default(8),
+        }),
+        Schema.object({
+          type: Schema.const(SleepMode.UNTIL).required(),
+          until: Schema.string().default('08:00'),
+        }),
+        Schema.object({
+          type: Schema.const(SleepMode.RANDOM).required(),
+          min: Schema.number().default(6),
+          max: Schema.number().default(10),
+        }),
+      ]),
+    ]),
+    mute: Schema.intersect([
+      Schema.object({
+        type: Schema.union([MuteDurationType.STATIC, MuteDurationType.RANDOM]),
+      }).default({ type: MuteDurationType.STATIC }),
+      Schema.union([
+        Schema.object({
+          type: Schema.const(MuteDurationType.STATIC).required(),
+          duration: Schema.number().default(5),
+        }),
+        Schema.object({
+          type: Schema.const(MuteDurationType.RANDOM).required(),
+          min: Schema.number().default(0.1),
+          max: Schema.number().default(10),
+        }),
+      ]),
+    ]),
+    maxAllowedDuration: Schema.number().default(1440),
+    enableMessage: Schema.boolean().default(false),
+    enableMuteOthers: Schema.boolean().default(true),
+    probability: Schema.number().default(0.5).min(0).max(1),
+  }).i18n({
+    'zh-CN': require('./locales/zh-CN').config_mute,
+    'en-US': require('./locales/en-US').config_mute,
   }),
 
   Schema.object({
@@ -148,18 +169,42 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(JrrpAlgorithm.GAUSSIAN),
       Schema.const(JrrpAlgorithm.LINEAR),
     ]).default(JrrpAlgorithm.BASIC),
-    entertainment: Schema.object({
-      mode: Schema.union([
-        Schema.const(EntertainmentMode.DISABLED),
-        Schema.const(EntertainmentMode.APRIL_FOOL),
-        Schema.const(EntertainmentMode.ENABLED),
-      ]).default(EntertainmentMode.APRIL_FOOL),
-      displayMode: Schema.union([
-        Schema.const(DisplayMode.BINARY),
-        Schema.const(DisplayMode.EXPRESSION),
-      ]).default(DisplayMode.BINARY),
-    }),
-    specialPassword: Schema.string().default('PASSWORD').role('secret'),
+    specialCode: Schema.string().default('CODE').role('secret'),
+    fool: Schema.intersect([
+      Schema.object({
+        type: Schema.union([FoolMode.DISABLED, FoolMode.ENABLED]),
+      }).default({ type: FoolMode.DISABLED }),
+      Schema.union([
+        Schema.object({
+          type: Schema.const(FoolMode.DISABLED),
+        }),
+        Schema.intersect([
+          Schema.object({
+            type: Schema.const(FoolMode.ENABLED).required(),
+            date: Schema.string().default('4-1'),
+          }),
+          Schema.intersect([
+            Schema.object({
+              displayMode: Schema.union([DisplayMode.BINARY, DisplayMode.EXPRESSION]),
+            }).default({ displayMode: DisplayMode.BINARY }),
+            Schema.union([
+              Schema.object({
+                displayMode: Schema.const(DisplayMode.BINARY),
+              }),
+              Schema.object({
+                displayMode: Schema.const(DisplayMode.EXPRESSION).required(),
+                baseNumber: Schema.number().default(6).min(0).max(9),
+              }),
+            ]),
+          ]),
+        ]),
+      ]),
+    ]),
+  }).i18n({
+    'zh-CN': require('./locales/zh-CN').config_jrrp,
+    'en-US': require('./locales/en-US').config_jrrp,
+  }),
+  Schema.object({
     rangeMessages: Schema.dict(String).default({
       '0-10': 'commands.jrrp.messages.range.1',
       '11-19': 'commands.jrrp.messages.range.2',
@@ -180,8 +225,8 @@ export const Config: Schema<Config> = Schema.intersect([
       '12-25': 'commands.jrrp.messages.date.2'
     })
   }).i18n({
-    'zh-CN': require('./locales/zh-CN').jrrpconfig,
-    'en-US': require('./locales/en-US').jrrpconfig,
+    'zh-CN': require('./locales/zh-CN').config_range,
+    'en-US': require('./locales/en-US').config_range,
   }),
 ])
 
@@ -220,15 +265,15 @@ export async function apply(ctx: Context, config: Config) {
 
     let score: number;
     if (specialCode) {
-      score = jrrpSpecial.calculateSpecialJrrp(specialCode, date, config.specialPassword);
+      score = jrrpSpecial.calculateSpecialJrrp(specialCode, date, config.specialCode);
     } else {
       switch (config.choice) {
-        case 'basic': {
+        case JrrpAlgorithm.BASIC: {
           // 基础算法:对用户ID+日期的哈希值取模
           score = Math.abs(utils.hashCode(userDateSeed)) % 101;
           break;
         }
-        case 'gaussian': {
+        case JrrpAlgorithm.GAUSSIAN: {
           // 高斯算法:使用Box-Muller变换生成正态分布随机数
           const normalRandom = (seed: string): number => {
             const hash = utils.hashCode(seed);
@@ -249,7 +294,7 @@ export async function apply(ctx: Context, config: Config) {
           score = toNormalLuck(weightedRandom);
           break;
         }
-        case 'linear': {
+        case JrrpAlgorithm.LINEAR: {
           // 线性同余算法:使用线性同余生成器
           const lcgSeed = utils.hashCode(userDateSeed);
           score = Math.floor(((lcgSeed * 9301 + 49297) % 233280) / 233280 * 101);
@@ -286,20 +331,20 @@ export async function apply(ctx: Context, config: Config) {
         const sleep = config.sleep;
 
         switch (sleep.type) {
-          case 'static':
+          case SleepMode.STATIC:
             duration = Math.max(1, sleep.duration) * 60;
             break;
-          case 'until':
+          case SleepMode.UNTIL:
             const [hours, minutes] = sleep.until.split(':').map(Number);
             if (isNaN(hours) || isNaN(minutes)) {
-              throw new Error(session.text('errors.invalid_time'));
+              throw new Error(session.text('commands.sleep.messages.errors.invalid_time'));
             }
             const endTime = new Date(now);
             endTime.setHours(hours, minutes, 0, 0);
             if (endTime <= now) endTime.setDate(endTime.getDate() + 1);
             duration = Math.max(1, Math.floor((endTime.getTime() - now.getTime()) / 60000));
             break;
-          case 'random':
+          case SleepMode.RANDOM:
             const min = Math.max(1, sleep.min) * 60;
             const max = Math.max(sleep.max, sleep.min) * 60;
             duration = Math.floor(Math.random() * (max - min + 1) + min);
@@ -330,9 +375,9 @@ export async function apply(ctx: Context, config: Config) {
   ctx.command('zanwo')
     .alias('赞我')
     .option('u', '-u <target:text>')
-    .option('z', '-z')
     .option('a', '-a <target:text>')
     .option('r', '-r <target:text>')
+    .option('z', '-z')
     .option('l', '-l')
     .action(async ({ session, options }) => {
       // 列表查看功能
@@ -393,17 +438,16 @@ export async function apply(ctx: Context, config: Config) {
       }
 
       // 单个点赞
-      let targetId = session.userId;
+      const likeTargetId = utils.parseTarget(options.u) || session.userId;
       if (options?.u) {
-        targetId = utils.parseTarget(options.u) || session.userId;
-        if (targetId === session.userId) {
+        if (likeTargetId === session.userId) {
           const message = await session.send(session.text('commands.zanwo.messages.target_not_found'));
           await utils.autoRecall(session, message);
           return;
         }
       }
 
-      const success = await zanwoManager.sendLikes(session, targetId);
+      const success = await zanwoManager.sendLikes(session, likeTargetId);
       const message = await session.send(
         success
           ? session.text('commands.zanwo.messages.success', [config.enableNotify ? (config.adminAccount || '') : ''])
@@ -432,25 +476,37 @@ export async function apply(ctx: Context, config: Config) {
     .option('r', '-r')
     .action(async ({ session, options }, duration) => {
       // 检查是否允许禁言他人
-      if (!config.mute.enableMuteOthers && (options?.u || options?.r)) {
+      if (!config.enableMuteOthers && (options?.u || options?.r)) {
         const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'));
         await utils.autoRecall(session, message);
         return;
       }
 
       // 验证禁言时长是否超过最大限制
-      if (duration && duration > config.mute.maxAllowedDuration) {
-        const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.mute.maxAllowedDuration]));
+      if (duration && duration > config.maxAllowedDuration) {
+        const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.maxAllowedDuration]));
         await utils.autoRecall(session, message);
         return;
       }
 
       // 计算实际禁言时长
-      let random = new Random();
-      let muteDuration = duration ? duration * 60  // 指定时长
-        : config.mute.type === MuteDurationType.RANDOM
-          ? random.int(config.mute.minDuration * 60, config.mute.maxDuration * 60) // 随机时长
-          : config.mute.duration * 60; // 默认时长
+      let randomGenerator = new Random();
+      let muteDuration: number;
+
+      if (duration) {
+        muteDuration = duration * 60;  // 指定时长
+      } else {
+        switch (config.mute.type) {
+          case MuteDurationType.STATIC:
+            muteDuration = config.mute.duration * 60;
+            break;
+          case MuteDurationType.RANDOM:
+            muteDuration = randomGenerator.int(config.mute.min * 60, config.mute.max * 60);
+            break;
+          default:
+            muteDuration = 5 * 60; // 默认5分钟
+        }
+      }
 
       // 处理随机禁言模式
       if (options?.r) {
@@ -464,14 +520,14 @@ export async function apply(ctx: Context, config: Config) {
           }
 
           // 根据概率决定是禁言自己还是他人
-          if (!random.bool(config.mute.probability)) {
-            await utils.executeMute(session, session.userId, muteDuration, config.mute.enableMessage);
+          if (!randomGenerator.bool(config.probability)) {
+            await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
             return;
           }
 
           // 随机选择目标并执行禁言
-          const targetIndex = random.int(0, validMembers.length - 1);
-          await utils.executeMute(session, validMembers[targetIndex], muteDuration, config.mute.enableMessage);
+          const targetIndex = randomGenerator.int(0, validMembers.length - 1);
+          await utils.executeMute(session, validMembers[targetIndex], muteDuration, config.enableMessage);
           return;
         } catch {
           const message = await session.send(session.text('commands.mute.messages.no_valid_members'));
@@ -481,27 +537,26 @@ export async function apply(ctx: Context, config: Config) {
       }
 
       // 处理指定目标禁言模式
+      const muteTargetId = utils.parseTarget(options.u);
       if (options?.u) {
-        const targetId = utils.parseTarget(options.u);
-
         // 如果目标无效或是自己，则禁言自己
-        if (!targetId || targetId === session.userId) {
-          await utils.executeMute(session, session.userId, muteDuration, config.mute.enableMessage);
+        if (!muteTargetId || muteTargetId === session.userId) {
+          await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
           return;
         }
 
         // 根据概率决定是禁言自己还是目标
-        if (!random.bool(config.mute.probability)) {
-          await utils.executeMute(session, session.userId, muteDuration, config.mute.enableMessage);
+        if (!randomGenerator.bool(config.probability)) {
+          await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
           return;
         }
 
-        await utils.executeMute(session, targetId, muteDuration, config.mute.enableMessage);
+        await utils.executeMute(session, muteTargetId, muteDuration, config.enableMessage);
         return;
       }
 
       // 默认禁言自己
-      await utils.executeMute(session, session.userId, muteDuration, config.mute.enableMessage);
+      await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
     });
 
   /**
@@ -522,12 +577,12 @@ export async function apply(ctx: Context, config: Config) {
   ctx.command('jrrp')
     .option('d', '-d <date>', { type: 'string' })
     .option('b', '-b <code>', { type: 'string' })
-    .option('g', '-g <number:number>', { fallback: null })
+    .option('g', '-g <number:integer>', { fallback: null })
     .action(async ({ session, options }) => {
       // 处理查找特定分数的日期
       if ('g' in options && options.g !== null) {
         // 验证分数范围
-        if (options.g < 0 || options.g > 100) {
+        if (!Number.isInteger(options.g) || options.g < 0 || options.g > 100) {
           const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
           await utils.autoRecall(session, message);
           return;
@@ -572,31 +627,31 @@ export async function apply(ctx: Context, config: Config) {
       }
 
       // 处理日期解析
-      let targetDate = new Date();
+      let dateForCalculation = new Date();
       if (options?.d) {
-        const date = utils.parseDate(options.d, targetDate);
+        const date = utils.parseDate(options.d, dateForCalculation);
         if (!date) {
-          const message = await session.send(session.text('errors.invalid_date'));
+          const message = await session.send(session.text('commands.errors.invalid_date'));
           await utils.autoRecall(session, message);
           return;
         }
-        targetDate = date;
+        dateForCalculation = date;
       }
 
       // 计算运势
       try {
         // 格式化日期字符串
-        const year = targetDate.getFullYear();
-        const monthStr = String(targetDate.getMonth() + 1).padStart(2, '0');
-        const dayStr = String(targetDate.getDate()).padStart(2, '0');
-        const currentDateStr = `${year}-${monthStr}-${dayStr}`;
+        const year = dateForCalculation.getFullYear();
+        const monthStr = String(dateForCalculation.getMonth() + 1).padStart(2, '0');
+        const dayStr = String(dateForCalculation.getDate()).padStart(2, '0');
+        const formattedDateTime = `${year}-${monthStr}-${dayStr}`;
         const monthDay = `${monthStr}-${dayStr}`;
 
         // 处理节日特殊消息
         if (config.holidayMessages?.[monthDay]) {
           const holidayMessage = session.text(config.holidayMessages[monthDay]);
-          const promptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'));
-          await utils.autoRecall(session, promptMessage);
+          const holidayPromptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'));
+          await utils.autoRecall(session, holidayPromptMessage);
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
           if (!response) {
             await session.send(session.text('commands.jrrp.messages.cancel'));
@@ -605,14 +660,14 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const userNickname = session.username || 'User'
-        let luckScore: number
-        const userDateSeed = `${session.userId}-${currentDateStr}`
+        let userFortune: number
+        const userDateSeed = `${session.userId}-${formattedDateTime}`
 
         const specialCode = jrrpSpecial.getSpecialCode(session.userId);
-        luckScore = calculateScore(userDateSeed, targetDate, specialCode);
+        userFortune = calculateScore(userDateSeed, dateForCalculation, specialCode);
 
         // 处理特殊码零分确认
-        if (specialCode && luckScore === 0) {
+        if (specialCode && userFortune === 0) {
           await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
           if (!response || response.toLowerCase() !== 'y') {
@@ -623,35 +678,35 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         // 格式化分数显示
-        const formattedScore = jrrpSpecial.formatScore(luckScore, targetDate, config.entertainment);
-        let resultText = session.text('commands.jrrp.messages.result', [formattedScore, userNickname]);
+        const formattedFortune = jrrpSpecial.formatScore(userFortune, dateForCalculation, config.fool);
+        let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);
 
         // 处理特殊分数消息
         if (specialCode) {
-          if (luckScore === 100 && jrrpSpecial.isFirst100(session.userId)) {
+          if (userFortune === 100 && jrrpSpecial.isFirst100(session.userId)) {
             await jrrpSpecial.markFirst100(session.userId);
-            resultText += session.text(config.specialMessages[luckScore]) +
+            fortuneResultText += session.text(config.specialMessages[userFortune]) +
                           '\n' + session.text('commands.jrrp.messages.special_mode.first_100');
-          } else if (config.specialMessages && luckScore in config.specialMessages) {
-            resultText += session.text(config.specialMessages[luckScore]);
+          } else if (config.specialMessages && userFortune in config.specialMessages) {
+            fortuneResultText += session.text(config.specialMessages[userFortune]);
           }
-        } else if (config.specialMessages && luckScore in config.specialMessages) {
-          resultText += session.text(config.specialMessages[luckScore]);
+        } else if (config.specialMessages && userFortune in config.specialMessages) {
+          fortuneResultText += session.text(config.specialMessages[userFortune]);
         }
 
         // 处理分数范围消息
-        if (!config.specialMessages?.[luckScore] && config.rangeMessages) {
-          for (const [range, msg] of Object.entries(config.rangeMessages)) {
+        if (!config.specialMessages?.[userFortune] && config.rangeMessages) {
+          for (const [range, rangeMessage] of Object.entries(config.rangeMessages)) {
             const [min, max] = range.split('-').map(Number);
-            if (!isNaN(min) && !isNaN(max) && luckScore >= min && luckScore <= max) {
-              resultText += session.text(msg);
+            if (!isNaN(min) && !isNaN(max) && userFortune >= min && userFortune <= max) {
+              fortuneResultText += session.text(rangeMessage);
               break;
             }
           }
         }
 
         // 发送结果
-        await session.send(resultText);
+        await session.send(fortuneResultText);
         return;
       } catch (error) {
         console.error('Daily fortune calculation failed:', error);
