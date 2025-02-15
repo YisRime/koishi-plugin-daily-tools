@@ -592,7 +592,7 @@ export async function apply(ctx: Context, config: Config) {
       }
 
       // 处理特殊码绑定
-      if ('b' in options) {
+      if (options.b !== undefined) { // 修改这里,使用 !== undefined 来判断是否传入了-b参数
         try {
           // 删除原始命令消息
           if (session.messageId) {
@@ -600,7 +600,7 @@ export async function apply(ctx: Context, config: Config) {
           }
 
           // 处理解绑操作
-          if (!options.b) {
+          if (options.b === '') { // 修改这里,使用 === '' 来判断是否为空字符串
             const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
             await utils.autoRecall(session, message);
             await jrrpSpecial.removeSpecialCode(session.userId);
@@ -622,6 +622,7 @@ export async function apply(ctx: Context, config: Config) {
         } catch (e) {
           console.error('Failed to handle special code binding:', e);
         }
+        return; // 添加return确保不会继续执行计算人品的逻辑
       }
 
       // 处理日期解析
