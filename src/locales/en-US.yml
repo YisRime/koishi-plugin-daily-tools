@@ -32,14 +32,14 @@ config_mute:
   probability: "Mute success probability"
 
 config_jrrp:
-  $desc: "Daily Luck Configuration"
+  $desc: "Daily Fortune Configuration"
   choice:
     $desc: "Algorithm Selection"
     $inner:
       - "Modulo Algorithm"
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
-  specialCode: "Mystery Code — Used for JRRP calculation"
+  specialCode: "Identification Code Key — Used for JRRP calculation"
   fool:
     type:
       $desc: "April Fools Mode"
@@ -118,11 +118,16 @@ commands:
         others_disabled: "Muting others is disabled"
 
   jrrp:
-    description: "Daily Luck, calculate today's fortune"
+    description: "Daily Fortune, calculate today's luck"
     usage: |-
-      Check daily luck, supports specified date
+      Check daily fortune with following features:
+      -d [date] Check fortune for specific date (Format: YYYY-MM-DD or MM-DD)
+      -b [code] Bind/Update/Unbind identification code
+      -g [score] Find date for specific score
     examples: |-
       jrrp -d 1970-01-01
+      jrrp -b XXXX-XXXX-XXXX-XXXX
+      jrrp -g 100
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
@@ -167,13 +172,14 @@ commands:
         9: "Reserved"
         10: "Reserved"
       special_mode:
-        invalid_code: "Invalid code format! Please use XXXX-XXXX-XXXX-XXXX format (X is hexadecimal)"
-        bind_success: "Code binding successful!"
-        unbind_success: "Code unbinding successful!"
-        already_bound: "This code is already bound"
-        rebind_success: "Code updated successfully!"
-        not_bound: "You currently have no bound code"
-        first_100: "Hidden theme Lucky Pink unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
-        zero_prompt: "Before viewing the result, please agree to the following additional terms:\n1. I acknowledge and understand that PCL2's Daily Luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
+        invalid_code: "Invalid identification code format! Please use XXXX-XXXX-XXXX-XXXX format (X is hexadecimal)"
+        bind_success: "Identification code binding successful!"
+        unbind_success: "Identification code unbound successfully!"
+        already_bound: "This identification code is already bound"
+        rebind_confirm: "You already have a bound identification code. Are you sure you want to bind a new one? (y/n)"
+        rebind_success: "Identification code updated successfully!"
+        not_bound: "You currently have no bound identification code"
+        first_100: "Congratulations! Special theme: Lucky Pink unlocked!\nGo to PCL2->More->Toolbox->Daily Fortune to confirm"
+        zero_prompt: "Note: Fortune is zero, confirm to continue?\nBefore viewing the result, please confirm:\n1. PCL2's Daily Fortune feature is working properly.\n2. You understand and accept the possible result.\nEnter y to continue:"
     errors:
-      invalid_date: "Invalid date format"
+      invalid_date: "Invalid date format, please use YYYY-MM-DD or MM-DD format"

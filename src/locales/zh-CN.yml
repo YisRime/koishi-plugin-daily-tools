@@ -39,7 +39,7 @@ config_jrrp:
       - "取模算法"
       - "正态分布算法"
       - "线性同余算法"
-  specialCode: "神秘代码——用于计算JRRP"
+  specialCode: "识别码验证密钥——用于计算JRRP"
   fool:
     type:
       $desc: "愚人模式"
@@ -120,9 +120,14 @@ commands:
   jrrp:
     description: "今日人品，计算今日运势"
     usage: |-
-      查看今日人品，支持指定日期
+      查看今日人品，支持以下功能：
+      -d [日期] 指定日期查看运势（格式：YYYY-MM-DD 或 MM-DD）
+      -b [识别码] 绑定/更新/解绑识别码
+      -g [分数] 查找特定分数出现的日期
     examples: |-
       jrrp -d 1970-01-01
+      jrrp -b XXXX-XXXX-XXXX-XXXX
+      jrrp -g 100
     options:
       d: "指定日期（YYYY-MM-DD 或 MM-DD）"
     messages:
@@ -171,9 +176,10 @@ commands:
         bind_success: "识别码绑定成功！"
         unbind_success: "识别码解绑成功！"
         already_bound: "该识别码已经绑定"
+        rebind_confirm: "你已经绑定了一个识别码。是否确定要重新绑定新的识别码？(y/n)"
         rebind_success: "识别码已更新！"
         not_bound: "您当前没有绑定识别码"
         first_100: "隐藏主题 欧皇粉 已解锁！\n前往 PCL2->更多->百宝箱->今日人品 确认"
         zero_prompt: "在查看结果前，请先同意以下附加使用条款：\n1. 我知晓并了解 PLC2 的今日人品功能完全没有出 Bug。\n2. PLC2 不对使用本软件所间接造成的一切财产损失（如砸电脑等）等负责。\n（y/n）"
     errors:
-      invalid_date: "无效的日期格式"
+      invalid_date: "日期格式错误，请使用 YYYY-MM-DD 或 MM-DD 格式"

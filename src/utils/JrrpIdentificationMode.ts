@@ -4,13 +4,13 @@ import * as path from 'path'
 import { DisplayMode, FoolConfig, FoolMode } from '..';
 
 /**
- * JRRP特殊模式处理类
- * 用于处理用户特殊代码绑定和今日人品计算规则，包括特殊代码的验证、绑定、
- * 移除以及基于特殊代码的JRRP计算。同时支持娱乐模式下的分数显示格式化。
+ * JRRP识别码模式处理类
+ * 用于处理用户识别码绑定和今日人品计算规则，包括识别码的验证、绑定、
+ * 移除以及基于识别码的JRRP计算。同时支持娱乐模式下的分数显示格式化。
  */
-export class JrrpSpecialMode {
-  /** 存储用户ID和特殊代码的映射关系 */
-  private specialCodes = new Map<string, string>();
+export class JrrpIdentificationMode {
+  /** 存储用户ID和识别码的映射关系 */
+  private identificationCodes = new Map<string, string>();
 
   /** 记录用户是否已获得过100点的状态 */
   private first100Records = new Map<string, boolean>();
@@ -81,7 +81,7 @@ export class JrrpSpecialMode {
       await fs.mkdir(dir, { recursive: true });
 
       const data = {
-        codes: Object.fromEntries(this.specialCodes),
+        codes: Object.fromEntries(this.identificationCodes),
         first100: Object.fromEntries(this.first100Records)
       };
       await fs.writeFile(this.JRRP_DATA_PATH, JSON.stringify(data, null, 2));
@@ -109,50 +109,51 @@ export class JrrpSpecialMode {
   }
 
   /**
-   * 验证特殊代码格式是否正确
-   * @param code 特殊代码
+   * 验证识别码格式是否正确
+   * @param code 识别码
    * @returns 是否符合XXXX-XXXX-XXXX-XXXX格式(X为16进制数字)
    */
-  validateSpecialCode(code: string): boolean {
-    return /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/i.test(code);
+  validateIdentificationCode(code: string): boolean {
+    // 修改验证逻辑，使其更严格
+    return /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/i.test(code.trim());
   }
 
   /**
-   * 绑定用户的特殊代码
+   * 绑定用户的识别码
    * @param userId 用户ID
-   * @param code 特殊代码
+   * @param code 识别码
    */
-  async bindSpecialCode(userId: string, code: string): Promise<void> {
-    this.specialCodes.set(userId, code.toUpperCase());
+  async bindIdentificationCode(userId: string, code: string): Promise<void> {
+    this.identificationCodes.set(userId, code.trim().toUpperCase());
     await this.saveData();
   }
 
   /**
-   * 移除用户的特殊代码
+   * 移除用户的识别码
    * @param userId 用户ID
    */
-  async removeSpecialCode(userId: string): Promise<void> {
-    this.specialCodes.delete(userId);
+  async removeIdentificationCode(userId: string): Promise<void> {
+    this.identificationCodes.delete(userId);
     await this.saveData();
   }
 
   /**
-   * 获取用户的特殊代码
+   * 获取用户的识别码
    * @param userId 用户ID
-   * @returns 用户绑定的特殊代码，未绑定则返回undefined
+   * @returns 用户绑定的识别码，未绑定则返回undefined
    */
-  getSpecialCode(userId: string): string | undefined {
-    return this.specialCodes.get(userId);
+  getIdentificationCode(userId: string): string | undefined {
+    return this.identificationCodes.get(userId);
   }
 
   /**
-   * 使用特殊代码计算JRRP值
-   * @param specialCode 特殊代码
+   * 使用识别码计算JRRP值
+   * @param code 识别码
    * @param date 日期
    * @param password 密码
    * @returns JRRP值(0-100)
    */
-  calculateSpecialJrrp(specialCode: string, date: Date, password: string): number {
+  calculateJrrpWithCode(code: string, date: Date, password: string): number {
     const dayOfYear = this.getDayOfYear(date);
     const year = date.getFullYear();
     const day = date.getDate();
@@ -167,7 +168,7 @@ export class JrrpSpecialMode {
 
     const hash2 = this.getHash([
       password,
-      specialCode,
+      code,
       '0*8&6',
       String(day),
       'kjhg'
@@ -191,7 +192,7 @@ export class JrrpSpecialMode {
     if (data.codes) {
       operations.push(...Object.entries(data.codes)
         .map(([userId, code]) =>
-          this.specialCodes.set(userId, code as string)));
+          this.identificationCodes.set(userId, code as string)));
     }
 
     if (data.first100) {

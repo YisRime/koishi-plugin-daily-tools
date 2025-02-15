@@ -3,7 +3,7 @@ import { Context, Schema, Random} from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
 import { ZanwoManager } from './utils/ZanwoManager'
 import { ConfigValidator } from './utils/ConfigValidator'
-import { JrrpSpecialMode } from './utils/JrrpSpecialMode'
+import { JrrpIdentificationMode } from './utils/JrrpIdentificationMode'
 import * as utils from './utils/utils'
 import { CONSTANTS } from './utils/utils'
 
@@ -99,7 +99,7 @@ export interface Config {
 
   // jrrp相关
   choice: JrrpAlgorithm
-  specialCode: string
+  identificationCode: string // 改名:specialCode -> identificationCode
   fool: FoolConfig
   rangeMessages?: Record<string, string>
   specialMessages?: Record<number, string>
@@ -169,7 +169,7 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(JrrpAlgorithm.GAUSSIAN),
       Schema.const(JrrpAlgorithm.LINEAR),
     ]).default(JrrpAlgorithm.BASIC),
-    specialCode: Schema.string().default('CODE').role('secret'),
+    identificationCode: Schema.string().default('CODE').role('secret'), // 改名
     fool: Schema.intersect([
       Schema.object({
         type: Schema.union([FoolMode.DISABLED, FoolMode.ENABLED]),
@@ -241,7 +241,7 @@ export async function apply(ctx: Context, config: Config) {
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
-  const jrrpSpecial = new JrrpSpecialMode(ctx);
+  const jrrpIdentification = new JrrpIdentificationMode(ctx);
   utils.startCacheCleaner();
   const zanwoManager = new ZanwoManager(ctx);
 
@@ -256,16 +256,16 @@ export async function apply(ctx: Context, config: Config) {
    * 特殊代码模式下使用独立的计算逻辑
    * 结果会被缓存以提高性能
    */
-  function calculateScore(userDateSeed: string, date: Date, specialCode: string | undefined): number {
-    const cacheKey = `score:${userDateSeed}:${specialCode || 'normal'}`;
+  function calculateScore(userDateSeed: string, date: Date, identificationCode: string | undefined): number {
+    const cacheKey = `score:${userDateSeed}:${identificationCode || 'normal'}`;
     const cachedScore = utils.getCachedScore(cacheKey);
     if (cachedScore !== null) {
       return cachedScore;
     }
 
     let score: number;
-    if (specialCode) {
-      score = jrrpSpecial.calculateSpecialJrrp(specialCode, date, config.specialCode);
+    if (identificationCode) {
+      score = jrrpIdentification.calculateJrrpWithCode(identificationCode, date, config.identificationCode);
     } else {
       switch (config.choice) {
         case JrrpAlgorithm.BASIC: {
@@ -337,7 +337,7 @@ export async function apply(ctx: Context, config: Config) {
           case SleepMode.UNTIL:
             const [hours, minutes] = sleep.until.split(':').map(Number);
             if (isNaN(hours) || isNaN(minutes)) {
-              throw new Error(session.text('commands.sleep.messages.errors.invalid_time'));
+              throw new Error(session.text('commands.sleep.errors.invalid_time'));
             }
             const endTime = new Date(now);
             endTime.setHours(hours, minutes, 0, 0);
@@ -574,7 +574,7 @@ export async function apply(ctx: Context, config: Config) {
    */
   ctx.command('jrrp')
     .option('d', '-d <date>', { type: 'string' })
-    .option('b', '-b <code>', { type: 'string' })
+    .option('b', '-b [code:string]')
     .option('g', '-g <number:integer>', { fallback: null })
     .action(async ({ session, options }) => {
       // 处理查找特定分数的日期
@@ -586,12 +586,12 @@ export async function apply(ctx: Context, config: Config) {
           return;
         }
 
-        const specialCode = jrrpSpecial.getSpecialCode(session.userId);
-        await utils.findDateForScore(session, options.g, specialCode, calculateScore);
+        const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
+        await utils.findDateForScore(session, options.g, identificationCode, calculateScore);
         return;
       }
 
-      // 处理特殊码绑定
+      // 处理识别码绑定
       if ('b' in options) {
         try {
           // 删除原始命令消息以保护隐私
@@ -599,15 +599,16 @@ export async function apply(ctx: Context, config: Config) {
             await session.bot.deleteMessage(session.channelId, session.messageId);
           }
 
+          const existingCode = await jrrpIdentification.getIdentificationCode(session.userId);
+
           // 解绑处理
           if (!options.b) {
-            const existingCode = await jrrpSpecial.getSpecialCode(session.userId);
             if (!existingCode) {
               const message = await session.send(session.text('commands.jrrp.messages.special_mode.not_bound'));
               await utils.autoRecall(session, message);
               return;
             }
-            await jrrpSpecial.removeSpecialCode(session.userId);
+            await jrrpIdentification.removeIdentificationCode(session.userId);
             const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
             await utils.autoRecall(session, message);
             return;
@@ -615,31 +616,43 @@ export async function apply(ctx: Context, config: Config) {
 
           // 格式验证
           const code = options.b.trim().toUpperCase();
-          if (!jrrpSpecial.validateSpecialCode(code)) {
+          if (!jrrpIdentification.validateIdentificationCode(code)) {
             const message = await session.send(session.text('commands.jrrp.messages.special_mode.invalid_code'));
             await utils.autoRecall(session, message);
             return;
           }
 
-          // 检查现有绑定
-          const existingCode = await jrrpSpecial.getSpecialCode(session.userId);
+          // 检查重复绑定
+          if (existingCode === code) {
+            const message = await session.send(session.text('commands.jrrp.messages.special_mode.already_bound'));
+            await utils.autoRecall(session, message);
+            return;
+          }
 
-          // 绑定处理
-          await jrrpSpecial.bindSpecialCode(session.userId, code);
-          const message = await session.send(
-            session.text(
-              existingCode
-                ? existingCode === code
-                  ? 'commands.jrrp.messages.special_mode.already_bound'
-                  : 'commands.jrrp.messages.special_mode.rebind_success'
-                : 'commands.jrrp.messages.special_mode.bind_success'
-            )
-          );
+          // 如果已有不同的绑定码，确认是否重新绑定
+          if (existingCode) {
+            await session.send(session.text('commands.jrrp.messages.special_mode.rebind_confirm'));
+            const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
+            if (!response || response.toLowerCase() !== 'y') {
+              const message = await session.send(session.text('commands.jrrp.messages.cancel'));
+              await utils.autoRecall(session, message);
+              return;
+            }
+          }
+
+          // 执行绑定
+          await jrrpIdentification.bindIdentificationCode(session.userId, code);
+          const message = await session.send(session.text(
+            existingCode ? 'commands.jrrp.messages.special_mode.rebind_success' : 'commands.jrrp.messages.special_mode.bind_success'
+          ));
           await utils.autoRecall(session, message);
+          return;
         } catch (error) {
-          console.error('Failed to handle special code binding:', error);
+          console.error('Failed to handle identification code binding:', error);
+          const message = await session.send(session.text('commands.jrrp.messages.error'));
+          await utils.autoRecall(session, message);
+          return;
         }
-        return;
       }
 
       // 处理日期解析
@@ -647,7 +660,7 @@ export async function apply(ctx: Context, config: Config) {
       if (options?.d) {
         const date = utils.parseDate(options.d, dateForCalculation);
         if (!date) {
-          const message = await session.send(session.text('commands.errors.invalid_date'));
+          const message = await session.send(session.text('commands.jrrp.errors.invalid_date'));
           await utils.autoRecall(session, message);
           return;
         }
@@ -679,11 +692,11 @@ export async function apply(ctx: Context, config: Config) {
         let userFortune: number
         const userDateSeed = `${session.userId}-${formattedDateTime}`
 
-        const specialCode = jrrpSpecial.getSpecialCode(session.userId);
-        userFortune = calculateScore(userDateSeed, dateForCalculation, specialCode);
+        const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
+        userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
 
         // 处理特殊码零分确认
-        if (specialCode && userFortune === 0) {
+        if (identificationCode && userFortune === 0) {
           await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
           if (!response || response.toLowerCase() !== 'y') {
@@ -694,13 +707,13 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         // 格式化分数显示
-        const formattedFortune = jrrpSpecial.formatScore(userFortune, dateForCalculation, config.fool);
+        const formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
         let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);
 
         // 处理特殊分数消息
-        if (specialCode) {
-          if (userFortune === 100 && jrrpSpecial.isFirst100(session.userId)) {
-            await jrrpSpecial.markFirst100(session.userId);
+        if (identificationCode) {
+          if (userFortune === 100 && jrrpIdentification.isFirst100(session.userId)) {
+            await jrrpIdentification.markFirst100(session.userId);
             fortuneResultText += session.text(config.specialMessages[userFortune]) +
                           '\n' + session.text('commands.jrrp.messages.special_mode.first_100');
           } else if (config.specialMessages && userFortune in config.specialMessages) {
