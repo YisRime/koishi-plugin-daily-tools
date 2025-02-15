@@ -573,50 +573,31 @@ export async function apply(ctx: Context, config: Config) {
    * 5. 支持分数显示格式化
    */
   ctx.command('jrrp')
-    .option('d', '-d <date>', { type: 'string' })
-    .option('b', '-b [code:string]')
-    .option('g', '-g <number:integer>', { fallback: null })
+    .option('d', '-d <date:string>', { fallback: null })
+    .option('g', '-g <score:integer>', { fallback: null })
+    .option('b', '-b [code:string]', { fallback: null })
     .action(async ({ session, options }) => {
-      // 处理查找特定分数的日期
-      if (options.g !== null) {
-        // 验证分数范围
-        if (!Number.isInteger(options.g) || options.g < 0 || options.g > 100) {
-          const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
-          await utils.autoRecall(session, message);
-          return;
-        }
-
-        const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
-        await utils.findDateForScore(session, options.g, identificationCode, calculateScore);
-        return;
-      }
-
       // 处理识别码绑定
       if ('b' in options) {
-        try {
           // 删除原始命令消息以保护隐私
           if (session.messageId) {
             await session.bot.deleteMessage(session.channelId, session.messageId);
           }
-
           const existingCode = await jrrpIdentification.getIdentificationCode(session.userId);
 
-          // 解绑处理
+          // 处理解绑
           if (!options.b) {
-            if (!existingCode) {
-              const message = await session.send(session.text('commands.jrrp.messages.special_mode.not_bound'));
-              await utils.autoRecall(session, message);
-              return;
-            }
             await jrrpIdentification.removeIdentificationCode(session.userId);
             const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
             await utils.autoRecall(session, message);
             return;
           }
 
-          // 格式验证
+          // 处理绑定
           const code = options.b.trim().toUpperCase();
-          if (!jrrpIdentification.validateIdentificationCode(code)) {
+
+          // 格式验证
+          if (!code || !jrrpIdentification.validateIdentificationCode(code)) {
             const message = await session.send(session.text('commands.jrrp.messages.special_mode.invalid_code'));
             await utils.autoRecall(session, message);
             return;
@@ -629,17 +610,6 @@ export async function apply(ctx: Context, config: Config) {
             return;
           }
 
-          // 如果已有不同的绑定码，确认是否重新绑定
-          if (existingCode) {
-            await session.send(session.text('commands.jrrp.messages.special_mode.rebind_confirm'));
-            const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
-            if (!response || response.toLowerCase() !== 'y') {
-              const message = await session.send(session.text('commands.jrrp.messages.cancel'));
-              await utils.autoRecall(session, message);
-              return;
-            }
-          }
-
           // 执行绑定
           await jrrpIdentification.bindIdentificationCode(session.userId, code);
           const message = await session.send(session.text(
@@ -647,15 +617,23 @@ export async function apply(ctx: Context, config: Config) {
           ));
           await utils.autoRecall(session, message);
           return;
-        } catch (error) {
-          console.error('Failed to handle identification code binding:', error);
-          const message = await session.send(session.text('commands.jrrp.messages.error'));
+      }
+
+      // 处理查找特定分数的日期
+      if (options.g !== null) {
+        // 验证分数范围和处理逻辑保持不变...
+        if (!Number.isInteger(options.g) || options.g < 0 || options.g > 100) {
+          const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
           await utils.autoRecall(session, message);
           return;
         }
+
+        const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
+        await utils.findDateForScore(session, options.g, identificationCode, calculateScore);
+        return;
       }
 
-      // 处理日期解析
+      // 处理日期解析和运势计算
       let dateForCalculation = new Date();
       if (options?.d) {
         const date = utils.parseDate(options.d, dateForCalculation);
@@ -743,5 +721,5 @@ export async function apply(ctx: Context, config: Config) {
         await utils.autoRecall(session, message);
         return;
       }
-    });
+    })
 }

@@ -176,9 +176,7 @@ commands:
         bind_success: "Identification code binding successful!"
         unbind_success: "Identification code unbound successfully!"
         already_bound: "This identification code is already bound"
-        rebind_confirm: "You already have a bound identification code. Are you sure you want to bind a new one? (y/n)"
         rebind_success: "Identification code updated successfully!"
-        not_bound: "You currently have no bound identification code"
         first_100: "Congratulations! Special theme: Lucky Pink unlocked!\nGo to PCL2->More->Toolbox->Daily Fortune to confirm"
         zero_prompt: "Note: Fortune is zero, confirm to continue?\nBefore viewing the result, please confirm:\n1. PCL2's Daily Fortune feature is working properly.\n2. You understand and accept the possible result.\nEnter y to continue:"
     errors:
