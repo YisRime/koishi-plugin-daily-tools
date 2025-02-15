@@ -1,5 +1,5 @@
 config_autolike:
-  $desc: "Auto-like Configuration"
+  $desc: "Like Configuration"
   adminAccount: "Admin Account"
   enableNotify: "Show owner when like succeeds"
   adminOnly: "Only admin can configure auto-like list"
@@ -14,7 +14,7 @@ config_mute:
         - "Until Time"
         - "Random Duration"
     duration: "Fixed mute duration (hours)"
-    until: "Mute until (HH:MM)"
+    until: "Mute until time (HH:MM)"
     min: "Minimum mute duration (hours)"
     max: "Maximum mute duration (hours)"
   mute:
@@ -39,7 +39,7 @@ config_jrrp:
       - "Modulo Algorithm"
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
-  specialCode: "Special Code - Used for JRRP calculation"
+  specialCode: "Mystery Code — Used for JRRP calculation"
   fool:
     type:
       $desc: "April Fools Mode"
@@ -70,7 +70,7 @@ commands:
   sleep:
     description: "Quality sleep, mute for specified duration"
     usage: |-
-      Auto-mute for specified duration
+      Automatically mute for specified duration
       Supports three modes: Fixed Duration, Until Time, Random Duration
     messages:
       success: "Good night, sweet dreams"
@@ -81,8 +81,8 @@ commands:
   zanwo:
     description: "Auto-like, can like others"
     usage: |-
-      Send command to get bot's like, max 50 likes
-      -u @user Like specific user
+      Send command to let bot like you, limit 50 likes
+      -u @user Like specified user
       -a/r @user Add/Remove from batch like list
       -z Like all users in the list
     messages:
@@ -94,7 +94,7 @@ commands:
       no_targets: "Like list is empty"
       batch_success: "Batch like completed!"
       batch_failed: "Batch like failed!"
-      success: "Like completed, don't forget to like {0} back~"
+      success: "Like completed, remember to like back {0}~"
       like_failed: "Like failed"
       target_not_found: "User not found"
       permission_denied: "Admin only"
@@ -103,7 +103,7 @@ commands:
     description: "Mute yourself or others"
     usage: |-
       [duration] Specify mute duration (minutes)
-      -u Mute specific user
+      -u Mute specified user
       -r Mute random user
     examples: |-
       mute -u/r @user [1]
@@ -114,13 +114,13 @@ commands:
         duration_too_long: "Mute duration ({0} minutes) exceeds limit"
       notify:
         self_muted: "You have been muted for {0} minutes {1} seconds"
-        target_muted: "Muted {0} for {1} minutes {2} seconds"
-        others_disabled: "Muting others feature disabled"
+        target_muted: "{0} has been muted for {1} minutes {2} seconds"
+        others_disabled: "Muting others is disabled"
 
   jrrp:
     description: "Daily Luck, calculate today's fortune"
     usage: |-
-      Check today's luck value, supports specified date
+      Check daily luck, supports specified date
     examples: |-
       jrrp -d 1970-01-01
     options:
@@ -138,39 +138,42 @@ commands:
         2: "?! No way..."
         3: "! Ugh..."
         4: "! Barely acceptable...?"
-        5: "! Not bad, not bad."
-        6: "! Lucky day today!"
+        5: "! It's okay, it's okay."
+        6: "! Pretty good luck today!"
         7: "! Outstanding!"
-        8: "! Almost perfect..."
-        9: "Reserve"
-        10: "Reserve"
+        8: "! Almost got 100..."
+        9: "Reserved"
+        10: "Reserved"
       special:
         1: "! Terrible!"
         2: "! Fifty-fifty..."
         3: "! 100! 100!!!!"
-        4: "Reserve"
-        5: "Reserve"
-        6: "Reserve"
-        7: "Reserve"
-        8: "Reserve"
-        9: "Reserve"
-        10: "Reserve"
+        4: "Reserved"
+        5: "Reserved"
+        6: "Reserved"
+        7: "Reserved"
+        8: "Reserved"
+        9: "Reserved"
+        10: "Reserved"
       date:
         1: "Happy New Year!"
         2: "Merry Christmas!"
-        3: "Reserve"
-        4: "Reserve"
-        5: "Reserve"
-        6: "Reserve"
-        7: "Reserve"
-        8: "Reserve"
-        9: "Reserve"
-        10: "Reserve"
+        3: "Reserved"
+        4: "Reserved"
+        5: "Reserved"
+        6: "Reserved"
+        7: "Reserved"
+        8: "Reserved"
+        9: "Reserved"
+        10: "Reserved"
       special_mode:
-        invalid_code: "Invalid identification code!"
-        bind_success: "Identification code bound successfully!"
-        unbind_success: "Identification code unbound successfully!"
-        first_100: "Hidden theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
-        zero_prompt: "Before viewing results, please agree to the following additional terms:\n1. I acknowledge and understand that PCL2's Daily Luck feature has no bugs at all.\n2. PCL2 is not responsible for any indirect property damage (e.g., smashing computers) caused by using this software.\n(y/n)"
+        invalid_code: "Invalid code format! Please use XXXX-XXXX-XXXX-XXXX format (X is hexadecimal)"
+        bind_success: "Code binding successful!"
+        unbind_success: "Code unbinding successful!"
+        already_bound: "This code is already bound"
+        rebind_success: "Code updated successfully!"
+        not_bound: "You currently have no bound code"
+        first_100: "Hidden theme Lucky Pink unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
+        zero_prompt: "Before viewing the result, please agree to the following additional terms:\n1. I acknowledge and understand that PCL2's Daily Luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
     errors:
       invalid_date: "Invalid date format"
