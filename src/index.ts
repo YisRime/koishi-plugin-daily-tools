@@ -160,7 +160,7 @@ export const Config: Schema<Config> = Schema.intersect([
     probability: Schema.number().default(0.5).min(0).max(1),
   }).i18n({
     'zh-CN': require('./locales/zh-CN').config_mute,
-    'en-US': require('./locales/en-US').config_mute,
+    'en-US': require('./locales/zh-CN').config_mute,
   }),
 
   Schema.object({
@@ -579,44 +579,54 @@ export async function apply(ctx: Context, config: Config) {
     .action(async ({ session, options }) => {
       // 处理识别码绑定
       if ('b' in options) {
-          // 删除原始命令消息以保护隐私
-          if (session.messageId) {
-            await session.bot.deleteMessage(session.channelId, session.messageId);
-          }
-          const existingCode = await jrrpIdentification.getIdentificationCode(session.userId);
+          try {
+            // 尝试删除原始命令消息以保护隐私，但不阻塞主流程
+            if (session.messageId) {
+              session.bot.deleteMessage(session.channelId, session.messageId).catch(() => {
+                // 忽略删除消息失败的错误
+              });
+            }
 
-          // 处理解绑
-          if (!options.b) {
-            await jrrpIdentification.removeIdentificationCode(session.userId);
-            const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
+            // 处理解绑
+            if (!options.b) {
+              await jrrpIdentification.removeIdentificationCode(session.userId);
+              const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
+              await utils.autoRecall(session, message);
+              return;
+            }
+
+            // 处理绑定
+            const code = options.b.trim().toUpperCase();
+
+            // 格式验证
+            if (!code || !jrrpIdentification.validateIdentificationCode(code)) {
+              const message = await session.send(session.text('commands.jrrp.messages.special_mode.invalid_code'));
+              await utils.autoRecall(session, message);
+              return;
+            }
+
+            const existingCode = await jrrpIdentification.getIdentificationCode(session.userId);
+
+            // 检查重复绑定
+            if (existingCode === code) {
+              const message = await session.send(session.text('commands.jrrp.messages.special_mode.already_bound'));
+              await utils.autoRecall(session, message);
+              return;
+            }
+
+            // 执行绑定
+            await jrrpIdentification.bindIdentificationCode(session.userId, code);
+            const message = await session.send(session.text(
+              existingCode ? 'commands.jrrp.messages.special_mode.rebind_success' : 'commands.jrrp.messages.special_mode.bind_success'
+            ));
+            await utils.autoRecall(session, message);
+            return;
+          } catch (error) {
+            console.error('Failed to handle identification code:', error);
+            const message = await session.send(session.text('commands.jrrp.messages.error'));
             await utils.autoRecall(session, message);
             return;
           }
-
-          // 处理绑定
-          const code = options.b.trim().toUpperCase();
-
-          // 格式验证
-          if (!code || !jrrpIdentification.validateIdentificationCode(code)) {
-            const message = await session.send(session.text('commands.jrrp.messages.special_mode.invalid_code'));
-            await utils.autoRecall(session, message);
-            return;
-          }
-
-          // 检查重复绑定
-          if (existingCode === code) {
-            const message = await session.send(session.text('commands.jrrp.messages.special_mode.already_bound'));
-            await utils.autoRecall(session, message);
-            return;
-          }
-
-          // 执行绑定
-          await jrrpIdentification.bindIdentificationCode(session.userId, code);
-          const message = await session.send(session.text(
-            existingCode ? 'commands.jrrp.messages.special_mode.rebind_success' : 'commands.jrrp.messages.special_mode.bind_success'
-          ));
-          await utils.autoRecall(session, message);
-          return;
       }
 
       // 处理查找特定分数的日期
