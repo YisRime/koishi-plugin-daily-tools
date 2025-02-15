@@ -384,12 +384,10 @@ export async function apply(ctx: Context, config: Config) {
       if (options?.l) {
         const targets = zanwoManager.getList();
         if (!targets.length) {
-          return session.send(session.text('commands.zanwo.messages.no_targets'));
+          return session.text('commands.zanwo.messages.no_targets');
         }
 
-        return session.send(
-          session.text('commands.zanwo.messages.list', [targets.join(', ')])
-        );
+        return session.text('commands.zanwo.messages.list', [targets.join(', ')]);
       }
 
       // 列表管理操作
