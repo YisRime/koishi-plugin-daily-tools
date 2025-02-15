@@ -420,13 +420,9 @@ export async function apply(ctx: Context, config: Config) {
           return;
         }
 
-        let success = true;
-        for (const targetId of targets) {
-          if (!await zanwoManager.sendLikes(session, targetId)) {
-            success = false;
-            break;
-          }
-        }
+        const results = await zanwoManager.sendBatchLikes(session, targets);
+        const successCount = Array.from(results.values()).filter(Boolean).length;
+        const success = successCount === targets.length;
 
         const message = await session.send(
           session.text(`commands.zanwo.messages.batch_${success ? 'success' : 'failed'}`)
@@ -509,15 +505,13 @@ export async function apply(ctx: Context, config: Config) {
       // 处理随机禁言模式
       if (options?.r) {
         try {
-          // 获取有效群成员列表
           const validMembers = await utils.getCachedMemberList(session);
           if (!validMembers.length) {
-            const message = await session.send(session.text('commands.mute.messages.no_valid_members'));
+            const message = await session.send(session.text('commands.mute.messages.errors.no_valid_members'));
             await utils.autoRecall(session, message);
             return;
           }
 
-          // 根据概率决定是禁言自己还是他人
           if (!randomGenerator.bool(config.probability)) {
             await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
             return;
@@ -525,10 +519,12 @@ export async function apply(ctx: Context, config: Config) {
 
           // 随机选择目标并执行禁言
           const targetIndex = randomGenerator.int(0, validMembers.length - 1);
-          await utils.executeMute(session, validMembers[targetIndex], muteDuration, config.enableMessage);
+          const targetId = validMembers[targetIndex];
+          await utils.executeMute(session, targetId, muteDuration, config.enableMessage);
           return;
-        } catch {
-          const message = await session.send(session.text('commands.mute.messages.no_valid_members'));
+        } catch (error) {
+          console.error('Failed to execute random mute:', error);
+          const message = await session.send(session.text('commands.mute.messages.errors.no_valid_members'));
           await utils.autoRecall(session, message);
           return;
         }
@@ -580,11 +576,9 @@ export async function apply(ctx: Context, config: Config) {
       // 处理识别码绑定
       if ('b' in options) {
           try {
-            // 尝试删除原始命令消息以保护隐私，但不阻塞主流程
+            // 尝试删除原始命令消息
             if (session.messageId) {
-              session.bot.deleteMessage(session.channelId, session.messageId).catch(() => {
-                // 忽略删除消息失败的错误
-              });
+              await utils.autoRecall(session, session.messageId, 500);
             }
 
             // 处理解绑

@@ -49,28 +49,23 @@ export const cacheStore = {
  * 自动撤回消息
  * @param {Session} session - 会话上下文
  * @param {string|string[]|object|object[]} message - 要撤回的消息或消息ID数组
- * @param {number} [delay] - 延迟撤回时间（毫秒）
+ * @param {number} [delay] - 延迟撤回时间（毫秒），默认使用 CONSTANTS.TIMEOUTS.AUTO_RECALL
  * @returns {Promise<Function>} 取消撤回的函数
  */
 export async function autoRecall(session, message, delay = CONSTANTS.TIMEOUTS.AUTO_RECALL) {
   if (!message) return;
 
   const timer = setTimeout(async () => {
-    if (Array.isArray(message)) {
-      const results = [];
-      for (let i = 0; message.length > i; i += 5) {
-        const batch = message.slice(i, i + 5);
-        const batchResults = await Promise.all(batch.map(async (msg) => {
-          const msgId = typeof msg === 'string' ? msg : msg?.id;
-          if (msgId) return session.bot.deleteMessage(session.channelId, msgId)
-            .catch(() => null);
-        }));
-        results.push(...batchResults);
-      }
-    } else {
-      const msgId = typeof message === 'string' ? message : message?.id;
-      if (msgId) await session.bot.deleteMessage(session.channelId, msgId)
-        .catch(() => null);
+    try {
+      const messages = Array.isArray(message) ? message : [message];
+      await Promise.all(messages.map(async msg => {
+        const msgId = typeof msg === 'string' ? msg : msg?.id;
+        if (msgId) {
+          await session.bot.deleteMessage(session.channelId, msgId);
+        }
+      }));
+    } catch (error) {
+      console.warn('Failed to execute auto recall:', error);
     }
   }, delay);
 
@@ -83,25 +78,40 @@ export async function autoRecall(session, message, delay = CONSTANTS.TIMEOUTS.AU
  * @returns {Promise<string[]>} 群成员ID列表
  */
 export async function getCachedMemberList(session): Promise<string[]> {
-  const memberCacheKey = `${session.platform}:${session.guildId}`; // 改进：cacheKey -> memberCacheKey
-  const currentTime = Date.now(); // 改进：now -> currentTime
-  const cachedMembers = cacheStore.memberListCache.get(memberCacheKey); // 改进：cached -> cachedMembers
+  const memberCacheKey = `${session.platform}:${session.guildId}`;
+  const currentTime = Date.now();
+  const cachedMembers = cacheStore.memberListCache.get(memberCacheKey);
 
   if (cachedMembers && cachedMembers.expiry > currentTime) {
     return cachedMembers.members;
   }
 
-  const memberList = await session.onebot.getGroupMemberList(session.guildId); // 改进：members -> memberList
-  const filteredMembers = memberList // 改进：validMembers -> filteredMembers
-    .filter(member => member.role === 'member' && String(member.user_id) !== String(session.selfId))
-    .map(member => String(member.user_id));
+  try {
+    const memberList = await session.onebot.getGroupMemberList(session.guildId);
+    const filteredMembers = memberList
+      .filter(member =>
+        member.role === 'member' &&
+        String(member.user_id) !== String(session.selfId))
+      .map(member => String(member.user_id));
 
-  cacheStore.memberListCache.set(memberCacheKey, {
-    members: filteredMembers,
-    expiry: currentTime + cacheConfig.memberListExpiry
-  });
+    if (!Array.isArray(filteredMembers)) {
+      throw new Error('Invalid member list format');
+    }
 
-  return filteredMembers;
+    cacheStore.memberListCache.set(memberCacheKey, {
+      members: filteredMembers,
+      expiry: currentTime + cacheConfig.memberListExpiry
+    });
+
+    return filteredMembers;
+  } catch (error) {
+    console.error('Failed to get member list:', error);
+    // 如果获取失败但有缓存，使用过期的缓存作为后备
+    if (cachedMembers) {
+      return cachedMembers.members;
+    }
+    return [];
+  }
 }
 
 /**

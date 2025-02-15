@@ -1,7 +1,7 @@
 config_autolike:
-  $desc: "Like Configuration"
+  $desc: "Auto-like Configuration"
   adminAccount: "Admin Account"
-  enableNotify: "Show owner when like succeeds"
+  enableNotify: "Enable notification when like is successful"
   adminOnly: "Only admin can configure auto-like list"
 
 config_mute:
@@ -14,7 +14,7 @@ config_mute:
         - "Until Time"
         - "Random Duration"
     duration: "Fixed mute duration (hours)"
-    until: "Mute until time (HH:MM)"
+    until: "Mute until (HH:MM)"
     min: "Minimum mute duration (hours)"
     max: "Maximum mute duration (hours)"
   mute:
@@ -32,14 +32,14 @@ config_mute:
   probability: "Mute success probability"
 
 config_jrrp:
-  $desc: "Daily Fortune Configuration"
+  $desc: "Daily Luck Configuration"
   choice:
     $desc: "Algorithm Selection"
     $inner:
       - "Modulo Algorithm"
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
-  specialCode: "Identification Code Key — Used for JRRP calculation"
+  specialCode: "Verification key for identification code - used to calculate JRRP"
   fool:
     type:
       $desc: "April Fools Mode"
@@ -70,7 +70,7 @@ commands:
   sleep:
     description: "Quality sleep, mute for specified duration"
     usage: |-
-      Automatically mute for specified duration
+      Auto mute for specified duration
       Supports three modes: Fixed Duration, Until Time, Random Duration
     messages:
       success: "Good night, sweet dreams"
@@ -81,10 +81,10 @@ commands:
   zanwo:
     description: "Auto-like, can like others"
     usage: |-
-      Send command to let bot like you, limit 50 likes
+      Send command to get bot likes, limit 50 likes
       -u @user Like specified user
-      -a/r @user Add/Remove from batch like list
-      -z Like all users in the list
+      -a/r @user Add/Remove user from like list
+      -z Like all users in like list
     messages:
       list: "Current like list: {0}"
       add_success: "Added {0} to like list"
@@ -94,7 +94,7 @@ commands:
       no_targets: "Like list is empty"
       batch_success: "Batch like completed!"
       batch_failed: "Batch like failed!"
-      success: "Like completed, remember to like back {0}~"
+      success: "Like completed, remember to like back{0}~"
       like_failed: "Like failed"
       target_not_found: "User not found"
       permission_denied: "Admin only"
@@ -114,24 +114,22 @@ commands:
         duration_too_long: "Mute duration ({0} minutes) exceeds limit"
       notify:
         self_muted: "You have been muted for {0} minutes {1} seconds"
-        target_muted: "{0} has been muted for {1} minutes {2} seconds"
-        others_disabled: "Muting others is disabled"
+        target_muted: "Muted {0} for {1} minutes {2} seconds"
+        others_disabled: "Muting others feature is disabled"
 
   jrrp:
-    description: "Daily Fortune, calculate today's luck"
+    description: "Daily Luck, calculate today's fortune"
     usage: |-
-      Check daily fortune with following features:
-      -d [date] Check fortune for specific date (Format: YYYY-MM-DD or MM-DD)
-      -b [code] Bind/Update/Unbind identification code
+      Check daily luck, supports:
+      -d [date] Check luck for specific date
       -g [score] Find date for specific score
     examples: |-
       jrrp -d 1970-01-01
-      jrrp -b XXXX-XXXX-XXXX-XXXX
       jrrp -g 100
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
-      result: "{1} Your luck value today is: {0}"
+      result: "{1} Your luck score today is: {0}"
       prompt: "Would you like to check your luck today?"
       cancel: "Alright, have a nice day!"
       error: "Error calculating daily luck"
@@ -143,41 +141,41 @@ commands:
         2: "?! No way..."
         3: "! Ugh..."
         4: "! Barely acceptable...?"
-        5: "! It's okay, it's okay."
-        6: "! Pretty good luck today!"
-        7: "! Outstanding!"
-        8: "! Almost got 100..."
-        9: "Reserved"
-        10: "Reserved"
+        5: "! Not bad, not bad."
+        6: "! Good luck today!"
+        7: "! Excellent!"
+        8: "! Almost 100..."
+        9: "Spare"
+        10: "Spare"
       special:
         1: "! Terrible!"
         2: "! Fifty-fifty..."
         3: "! 100! 100!!!!"
-        4: "Reserved"
-        5: "Reserved"
-        6: "Reserved"
-        7: "Reserved"
-        8: "Reserved"
-        9: "Reserved"
-        10: "Reserved"
+        4: "Spare"
+        5: "Spare"
+        6: "Spare"
+        7: "Spare"
+        8: "Spare"
+        9: "Spare"
+        10: "Spare"
       date:
         1: "Happy New Year!"
         2: "Merry Christmas!"
-        3: "Reserved"
-        4: "Reserved"
-        5: "Reserved"
-        6: "Reserved"
-        7: "Reserved"
-        8: "Reserved"
-        9: "Reserved"
-        10: "Reserved"
+        3: "Spare"
+        4: "Spare"
+        5: "Spare"
+        6: "Spare"
+        7: "Spare"
+        8: "Spare"
+        9: "Spare"
+        10: "Spare"
       special_mode:
-        invalid_code: "Invalid identification code format! Please use XXXX-XXXX-XXXX-XXXX format (X is hexadecimal)"
-        bind_success: "Identification code binding successful!"
+        invalid_code: "Invalid identification code format! Please use XXXX-XXXX-XXXX-XXXX format"
+        bind_success: "Identification code bound successfully!"
         unbind_success: "Identification code unbound successfully!"
-        already_bound: "This identification code is already bound"
-        rebind_success: "Identification code updated successfully!"
-        first_100: "Congratulations! Special theme: Lucky Pink unlocked!\nGo to PCL2->More->Toolbox->Daily Fortune to confirm"
-        zero_prompt: "Note: Fortune is zero, confirm to continue?\nBefore viewing the result, please confirm:\n1. PCL2's Daily Fortune feature is working properly.\n2. You understand and accept the possible result.\nEnter y to continue:"
+        already_bound: "You have already bound this identification code"
+        rebind_success: "Identification code rebound successfully!"
+        first_100: "Hidden theme Lucky Pink unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
+        zero_prompt: "Before viewing the result, please agree to the following additional terms:\n1. I acknowledge that PCL2's daily luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
     errors:
       invalid_date: "Invalid date format, please use YYYY-MM-DD or MM-DD format"

@@ -93,21 +93,54 @@ export class ZanwoManager {
    * @param session - 会话上下文
    * @param targetId - 目标用户ID
    * @param count - 点赞次数，默认5次
+   * @param concurrency - 并发数，默认3
    * @returns 点赞是否成功完成
    */
-  async sendLikes(session, targetId: string, count: number = 5): Promise<boolean> {
-    const promises = Array(count).fill(null).map(() =>
-      session.bot.internal.sendLike(targetId, 10).catch(() => null)
-    );
+  async sendLikes(session, targetId: string, count: number = 5, concurrency: number = 3): Promise<boolean> {
+    const chunks: number[][] = [];
+    for (let i = 0; i < count; i += concurrency) {
+      chunks.push(Array(Math.min(concurrency, count - i)).fill(1));
+    }
 
     try {
-      await Promise.all([
-        ...promises,
-        new Promise(resolve => setTimeout(resolve, CONSTANTS.TIMEOUTS.LIKE_DELAY))
-      ]);
+      for (const chunk of chunks) {
+        const promises = chunk.map(() =>
+          session.bot.internal.sendLike(targetId, 10).catch(() => null)
+        );
+
+        await Promise.all([
+          ...promises,
+          new Promise(resolve => setTimeout(resolve, CONSTANTS.TIMEOUTS.LIKE_DELAY))
+        ]);
+      }
       return true;
     } catch {
       return false;
     }
+  }
+
+  /**
+   * 批量发送点赞
+   * @param session - 会话上下文
+   * @param targetIds - 目标用户ID数组
+   * @param count - 每个用户的点赞次数
+   * @param concurrency - 单用户并发数
+   * @returns 点赞结果映射
+   */
+  async sendBatchLikes(
+    session,
+    targetIds: string[],
+    count: number = 5,
+    concurrency: number = 3
+  ): Promise<Map<string, boolean>> {
+    const results = new Map<string, boolean>();
+
+    for (const targetId of targetIds) {
+      results.set(targetId, await this.sendLikes(session, targetId, count, concurrency));
+      // 每个用户之间添加短暂延迟，避免请求过于密集
+      await new Promise(resolve => setTimeout(resolve, CONSTANTS.TIMEOUTS.LIKE_DELAY));
+    }
+
+    return results;
   }
 }

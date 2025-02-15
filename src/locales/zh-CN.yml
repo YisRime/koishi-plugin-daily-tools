@@ -1,7 +1,7 @@
 config_autolike:
   $desc: "点赞配置"
   adminAccount: "管理员账号"
-  enableNotify: "启用点赞成功时显示主人"
+  enableNotify: "启用点赞成功时提示点赞主人"
   adminOnly: "仅管理员可配置一键点赞列表"
 
 config_mute:
@@ -83,8 +83,8 @@ commands:
     usage: |-
       发送命令即可让机器人赞你，上限50个赞
       -u @用户 为指定用户点赞
-      -a/r @用户 添加/移除批量点赞列表
-      -z 对列表中所有用户进行点赞
+      -a/r @用户 从点赞列表添加/移除用户
+      -z 点赞列表中所有用户
     messages:
       list: "当前点赞列表：{0}"
       add_success: "已添加 {0} 到点赞列表"
@@ -121,12 +121,10 @@ commands:
     description: "今日人品，计算今日运势"
     usage: |-
       查看今日人品，支持以下功能：
-      -d [日期] 指定日期查看运势（格式：YYYY-MM-DD 或 MM-DD）
-      -b [识别码] 绑定/更新/解绑识别码
+      -d [日期] 查看指定日期运势
       -g [分数] 查找特定分数出现的日期
     examples: |-
       jrrp -d 1970-01-01
-      jrrp -b XXXX-XXXX-XXXX-XXXX
       jrrp -g 100
     options:
       d: "指定日期（YYYY-MM-DD 或 MM-DD）"
@@ -175,7 +173,7 @@ commands:
         invalid_code: "识别码格式错误！请使用形如 XXXX-XXXX-XXXX-XXXX 的格式"
         bind_success: "识别码绑定成功！"
         unbind_success: "识别码解绑成功！"
-        already_bound: "该识别码已经绑定"
+        already_bound: "您已绑定该识别码"
         rebind_success: "识别码换绑成功！"
         first_100: "隐藏主题 欧皇粉 已解锁！\n前往 PCL2->更多->百宝箱->今日人品 确认"
         zero_prompt: "在查看结果前，请先同意以下附加使用条款：\n1. 我知晓并了解 PLC2 的今日人品功能完全没有出 Bug。\n2. PLC2 不对使用本软件所间接造成的一切财产损失（如砸电脑等）等负责。\n（y/n）"
