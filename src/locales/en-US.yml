@@ -39,7 +39,7 @@ config_jrrp:
       - "Modulo Algorithm"
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
-  specialCode: "Verification key for identification code - used to calculate JRRP"
+  identificationCode: "Verification key for identification code - used to calculate JRRP"
   fool:
     type:
       $desc: "April Fools Mode"

@@ -39,7 +39,7 @@ config_jrrp:
       - "取模算法"
       - "正态分布算法"
       - "线性同余算法"
-  specialCode: "识别码验证密钥——用于计算JRRP"
+  identificationCode: "识别码验证密钥——用于计算JRRP"
   fool:
     type:
       $desc: "愚人模式"
