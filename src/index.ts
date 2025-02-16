@@ -160,7 +160,7 @@ export const Config: Schema<Config> = Schema.intersect([
     probability: Schema.number().default(0.5).min(0).max(1),
   }).i18n({
     'zh-CN': require('./locales/zh-CN').config_mute,
-    'en-US': require('./locales/zh-CN').config_mute,
+    'en-US': require('./locales/en-US').config_mute,
   }),
 
   Schema.object({
@@ -665,12 +665,19 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const userNickname = session.username || 'User'
+        const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
         const userDateSeed = `${session.userId}-${formattedDateTime}` // 将这行上移到这里作为唯一声明
         let userFortune: number
 
-        // 1. 首先计算原始分数
-        const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
-        userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
+        // 1. 尝试获取缓存的分数
+        const cachedScore = utils.getCachedScore(userDateSeed);
+        if (cachedScore !== null) {
+          userFortune = cachedScore;
+        } else {
+          // 如果没有缓存，计算并缓存分数
+          userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
+          utils.setCachedScore(userDateSeed, userFortune);
+        }
 
         // 2. 处理特殊码零分确认
         if (identificationCode && userFortune === 0) {
@@ -699,13 +706,10 @@ export async function apply(ctx: Context, config: Config) {
 
         // 根据模式选择不同的缓存和显示逻辑
         if (isUsingFoolMode) {
-          // 使用愚人模式的缓存和显示逻辑
+          // 直接使用 formatScore，它会处理缓存逻辑
           formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
         } else {
-          // 使用普通模式的缓存和显示逻辑
-          const normalCacheKey = CONSTANTS.CACHE_KEYS.NORMAL_RESULT(userDateSeed);
-          formattedFortune = utils.getCachedNormalResult(normalCacheKey) || userFortune.toString();
-          utils.setCachedNormalResult(normalCacheKey, formattedFortune);
+          formattedFortune = userFortune.toString();
         }
 
         let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);

@@ -218,206 +218,6 @@ export class JrrpIdentificationMode {
   }
 
   /**
-   * 生成一个数学表达式其计算结果等于目标数值
-   * @param target - 目标数值需要生成的表达式的计算结果
-   * @param baseNumber - 基础数字用于构建表达式
-   * @returns 返回一个字符串形式的数学表达式
-   */
-  generateExpression(target: number, baseNumber: number): string {
-    // 根据目标数值特征选择最适合的生成策略
-    const strategies = [
-      {
-        condition: (n: number) => n <= 10,
-        method: this.generateDecimalExpression.bind(this),
-        weight: 10
-      },
-      {
-        condition: (n: number) => this.isPowerOfTwo(n),
-        method: this.generateBinaryExpression.bind(this),
-        weight: 8
-      },
-      {
-        condition: (n: number) => this.hasSimplePrimeFactors(n),
-        method: this.generatePrimeFactorsExpression.bind(this),
-        weight: 7
-      },
-      {
-        condition: (n: number) => n > 20 && n < 50,
-        method: this.generateRecursiveExpression.bind(this),
-        weight: 6
-      },
-      {
-        condition: () => true,
-        method: this.generateOperatorMixExpression.bind(this),
-        weight: 5
-      }
-    ];
-
-    // 筛选符合条件的策略
-    const validStrategies = strategies.filter(s => s.condition(target));
-
-    // 根据权重随机选择策略
-    const totalWeight = validStrategies.reduce((sum, s) => sum + s.weight, 0);
-    let random = Math.random() * totalWeight;
-
-    for (const strategy of validStrategies) {
-      random -= strategy.weight;
-      if (random <= 0) {
-        try {
-          const result = strategy.method(target, baseNumber);
-          // 验证生成的表达式是否正确
-          if (this.validateExpression(result, target)) {
-            return result;
-          }
-        } catch (e) {
-          // 如果当前策略失败，继续尝试下一个
-          continue;
-        }
-      }
-    }
-
-    // 如果所有策略都失败，使用最基础的表达式生成
-    return this.generateDecimalExpression(target, baseNumber);
-  }
-
-  /**
-   * 检查数字是否为2的幂
-   */
-  private isPowerOfTwo(n: number): boolean {
-    return n > 0 && (n & (n - 1)) === 0;
-  }
-
-  /**
-   * 检查数字是否具有简单的质因数分解
-   */
-  private hasSimplePrimeFactors(n: number): boolean {
-    if (n <= 1) return false;
-    let temp = n;
-    let factors = 0;
-
-    for (let i = 2; i <= Math.sqrt(n); i++) {
-      while (temp % i === 0) {
-        factors++;
-        temp /= i;
-        if (factors > 3) return false; // 超过3个因子就不算简单
-      }
-    }
-
-    if (temp > 1) factors++;
-    return factors <= 3;
-  }
-
-  /**
-   * 安全的表达式计算器
-   */
-  private safeEvaluateExpression(expr: string): number {
-    // 使用栈来实现基本的计算器
-    const tokens = this.tokenize(expr);
-    return this.calculateRPN(this.shuntingYard(tokens));
-  }
-
-  /**
-   * 将表达式转换为标记流
-   */
-  private tokenize(expr: string): string[] {
-    // 处理支持的运算符和括号
-    return expr.replace(/([+\-*/()&|^<>])/g, ' $1 ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .split(' ')
-      .filter(token => token.length > 0);
-  }
-
-  /**
-   * 使用调度场算法将中缀表达式转换为后缀表达式
-   */
-  private shuntingYard(tokens: string[]): string[] {
-    const output: string[] = [];
-    const operators: string[] = [];
-    const precedence: Record<string, number> = {
-      '<<': 5, '>>': 5,
-      '*': 4, '/': 4,
-      '+': 3, '-': 3,
-      '&': 2, '|': 2, '^': 2,
-    };
-
-    for (const token of tokens) {
-      if (!isNaN(Number(token))) {
-        output.push(token);
-      } else if (token in precedence) {
-        while (
-          operators.length > 0 &&
-          operators[operators.length - 1] !== '(' &&
-          precedence[operators[operators.length - 1]] >= precedence[token]
-        ) {
-          output.push(operators.pop()!);
-        }
-        operators.push(token);
-      } else if (token === '(') {
-        operators.push(token);
-      } else if (token === ')') {
-        while (operators.length > 0 && operators[operators.length - 1] !== '(') {
-          output.push(operators.pop()!);
-        }
-        if (operators.length > 0) operators.pop(); // 移除左括号
-      }
-    }
-
-    while (operators.length > 0) {
-      output.push(operators.pop()!);
-    }
-
-    return output;
-  }
-
-  /**
-   * 计算后缀表达式
-   */
-  private calculateRPN(tokens: string[]): number {
-    const stack: number[] = [];
-
-    for (const token of tokens) {
-      if (!isNaN(Number(token))) {
-        stack.push(Number(token));
-      } else {
-        const b = stack.pop()!;
-        const a = stack.pop()!;
-        switch (token) {
-          case '+': stack.push(a + b); break;
-          case '-': stack.push(a - b); break;
-          case '*': stack.push(a * b); break;
-          case '/': stack.push(Math.floor(a / b)); break;
-          case '&': stack.push(a & b); break;
-          case '|': stack.push(a | b); break;
-          case '^': stack.push(a ^ b); break;
-          case '<<': stack.push(a << b); break;
-          case '>>': stack.push(a >> b); break;
-        }
-      }
-    }
-
-    return stack[0];
-  }
-
-  /**
-   * 验证生成的表达式是否正确
-   */
-  private validateExpression(expr: string, target: number): boolean {
-    try {
-      const sanitizedExpr = expr
-        .replace(/Math\.pow\(\d+,\s*\d+\)/g, m => String(eval(m)))  // 预计算所有 Math.pow
-        .replace(/\s+/g, ''); // 移除所有空白字符
-
-      const result = this.safeEvaluateExpression(sanitizedExpr);
-      const epsilon = 0.0001; // 允许的误差范围
-      return Math.abs(result - target) < epsilon;
-    } catch (e) {
-      this.ctx.logger.error(`Expression validation failed: ${e.message}`);
-      return false;
-    }
-  }
-
-  /**
    * 初始化基础数字的表达式映射
    * @param baseNumber - 用于生成表达式的基础数字
    */
@@ -728,41 +528,158 @@ export class JrrpIdentificationMode {
   }
 
   /**
+   * 安全的表达式计算器
+   */
+  private safeEvaluateExpression(expr: string): number {
+    // 使用栈来实现基本的计算器
+    const tokens = this.tokenize(expr);
+    return this.calculateRPN(this.shuntingYard(tokens));
+  }
+
+  /**
+   * 将表达式转换为标记流
+   */
+  private tokenize(expr: string): string[] {
+    // 处理支持的运算符和括号
+    return expr.replace(/([+\-*/()&|^<>])/g, ' $1 ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(token => token.length > 0);
+  }
+
+  /**
+   * 使用调度场算法将中缀表达式转换为后缀表达式
+   */
+  private shuntingYard(tokens: string[]): string[] {
+    const output: string[] = [];
+    const operators: string[] = [];
+    const precedence: Record<string, number> = {
+      '<<': 5, '>>': 5,
+      '*': 4, '/': 4,
+      '+': 3, '-': 3,
+      '&': 2, '|': 2, '^': 2,
+    };
+
+    for (const token of tokens) {
+      if (!isNaN(Number(token))) {
+        output.push(token);
+      } else if (token in precedence) {
+        while (
+          operators.length > 0 &&
+          operators[operators.length - 1] !== '(' &&
+          precedence[operators[operators.length - 1]] >= precedence[token]
+        ) {
+          output.push(operators.pop()!);
+        }
+        operators.push(token);
+      } else if (token === '(') {
+        operators.push(token);
+      } else if (token === ')') {
+        while (operators.length > 0 && operators[operators.length - 1] !== '(') {
+          output.push(operators.pop()!);
+        }
+        if (operators.length > 0) operators.pop(); // 移除左括号
+      }
+    }
+
+    while (operators.length > 0) {
+      output.push(operators.pop()!);
+    }
+
+    return output;
+  }
+
+  /**
+   * 计算后缀表达式
+   */
+  private calculateRPN(tokens: string[]): number {
+    const stack: number[] = [];
+
+    for (const token of tokens) {
+      if (!isNaN(Number(token))) {
+        stack.push(Number(token));
+      } else {
+        const b = stack.pop()!;
+        const a = stack.pop()!;
+        switch (token) {
+          case '+': stack.push(a + b); break;
+          case '-': stack.push(a - b); break;
+          case '*': stack.push(a * b); break;
+          case '/': stack.push(Math.floor(a / b)); break;
+          case '&': stack.push(a & b); break;
+          case '|': stack.push(a | b); break;
+          case '^': stack.push(a ^ b); break;
+          case '<<': stack.push(a << b); break;
+          case '>>': stack.push(a >> b); break;
+        }
+      }
+    }
+
+    return stack[0];
+  }
+
+  /**
+   * 验证生成的表达式是否正确
+   */
+  private validateExpression(expr: string, target: number): boolean {
+    try {
+      const sanitizedExpr = expr
+        .replace(/Math\.pow\(\d+,\s*\d+\)/g, m => String(eval(m)))  // 预计算所有 Math.pow
+        .replace(/\s+/g, ''); // 移除所有空白字符
+
+      const result = this.safeEvaluateExpression(sanitizedExpr);
+      const epsilon = 0.0001; // 允许的误差范围
+      return Math.abs(result - target) < epsilon;
+    } catch (e) {
+      this.ctx.logger.error(`Expression validation failed: ${e.message}`);
+      return false;
+    }
+  }
+
+  /**
    * 根据娱乐模式设置格式化分数显示
-   * @param score - 要格式化的分数值
-   * @param date - 当前日期，用于判断是否在特定日期启用娱乐模式
-   * @param foolConfig - 娱乐模式的配置对象，包含显示类型和基础数字等设置
-   * @returns 根据配置格式化后的分数字符串
    */
   public formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
-    // 确保总是使用娱乐模式格式化分数
     if (foolConfig.type !== FoolMode.ENABLED) {
       return score.toString();
     }
 
-    // 生成缓存键,包含分数、显示模式和基数
-    const cacheKey = `fool:${score}:${foolConfig.displayMode}:${foolConfig.baseNumber || ''}`;
-    let expressions = utils.getCachedFoolExpressions(cacheKey);
+    const displayMode = foolConfig.displayMode || DisplayMode.BINARY;
+    const baseNumber = foolConfig.baseNumber ?? 6;
 
-    if (!expressions) {
-      // 如果没有缓存,预先生成 FOOL_CACHE_SIZE 个不同表达式
-      expressions = Array.from({ length: CONSTANTS.LIMITS.FOOL_CACHE_SIZE }, () => {
-        switch (foolConfig.displayMode) {
-          case DisplayMode.BINARY:
-            return score.toString(2);  // 二进制模式固定只有一种表示
-          case DisplayMode.EXPRESSION:
-            const base = foolConfig.baseNumber ?? 6;
-            return this.generateExpression(score, base); // 每次生成不同的数学表达式
-          default:
-            return score.toString(2); // 默认使用二进制，避免显示原始数字
+    try {
+      if (displayMode === DisplayMode.BINARY) {
+        // 二进制模式
+        let binExpression = utils.getCachedBinaryExpression(score);
+        if (!binExpression) {
+          binExpression = score.toString(2);
+          utils.setCachedBinaryExpression(score, binExpression);
         }
-      });
+        return binExpression;
+      } else {
+        // 表达式模式
+        let expressions = utils.getCachedMathExpression(score);
+        if (!expressions) {
+          // 生成所有可能的表达式
+          const candidates = [
+            this.generateDecimalExpression(score, baseNumber),
+            this.generateBinaryExpression(score, baseNumber),
+            this.generatePrimeFactorsExpression(score, baseNumber),
+            this.generateRecursiveExpression(score, baseNumber),
+            this.generateOperatorMixExpression(score, baseNumber)
+          ].filter(expr => this.validateExpression(expr, score));
 
-      // 缓存生成的表达式数组
-      utils.setCachedFoolExpressions(cacheKey, expressions);
+          expressions = candidates.length > 0 ? candidates : [score.toString()];
+          utils.setCachedMathExpression(score, expressions);
+        }
+
+        // 随机选择一个表达式
+        return expressions[Math.floor(Math.random() * expressions.length)];
+      }
+    } catch (error) {
+      this.ctx.logger.error('Error formatting score:', error);
+      return score.toString();
     }
-
-    // 从缓存的表达式中随机选择一个返回
-    return expressions[Math.floor(Math.random() * expressions.length)];
   }
 }

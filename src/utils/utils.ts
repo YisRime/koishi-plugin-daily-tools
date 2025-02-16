@@ -10,8 +10,13 @@ import { Session, h } from 'koishi';
 export const CONSTANTS = {
   CACHE_KEYS: {
     MEMBER_LIST: (platform: string, guildId: string) => `members:${platform}:${guildId}`,
-    SCORE: (seed: string, type: string) => `score:${seed}:${type}`,
-    NORMAL_RESULT: (seed: string) => `normal:${seed}`, // 新增：普通模式结果缓存键
+    JRRP: {
+      SCORE: (seed: string) => `jrrp:score:${seed}`,
+      FOOL: {
+        BINARY: (score: number) => `jrrp:fool:binary:${score}`,
+        EXPRESSION: (score: number) => `jrrp:fool:expression:${score}`,
+      }
+    }
   },
   TIMEOUTS: {
     PROMPT: 10000,
@@ -32,20 +37,32 @@ export const CONSTANTS = {
  * @property {number} memberListExpiry - 成员列表缓存过期时间（毫秒）
  */
 export const cacheConfig = {
-  memberListExpiry: 3600000,
-  foolExpiry: 86400000, // 愚人模式缓存24小时过期
-  normalResultExpiry: 86400000, // 新增：普通模式结果缓存24小时过期
+  memberListExpiry: 3600000, // 1小时
+  jrrpExpiry: 86400000,     // 统一使用24小时过期
 };
 
 /**
- * 缓存存储对象，用于在内存中存储各类数据
+ * 统一的缓存结构
+ * @interface CacheEntry
+ * @template T
+ * @property {T} data - 缓存的数据
+ * @property {number} expiry - 缓存的过期时间
+ */
+interface CacheEntry<T> {
+  data: T;
+  expiry: number;
+}
+
+/**
+ * 统一的缓存存储
  * @namespace
- * @property {Map<string, {members: string[], expiry: number}>} memberListCache - 群成员列表缓存
+ * @property {Map<string, CacheEntry<string[]>>} memberList - 群成员列表缓存
+ * @property {Map<string, CacheEntry<string>>} jrrp - JRRP缓存
  */
 export const cacheStore = {
-  memberListCache: new Map<string, { members: string[], expiry: number }>(),
-  foolCache: new Map<string, { expressions: string[], expiry: number }>(),
-  normalResultCache: new Map<string, { result: string, expiry: number }>(), // 新增：普通模式结果缓存
+  memberList: new Map<string, CacheEntry<string[]>>(),
+  jrrpScore: new Map<string, CacheEntry<number>>(),
+  jrrpFool: new Map<string, CacheEntry<string | string[]>>()
 };
 
 /**
@@ -81,13 +98,9 @@ export async function autoRecall(session, message, delay = CONSTANTS.TIMEOUTS.AU
  * @returns {Promise<string[]>} 群成员ID列表
  */
 export async function getCachedMemberList(session): Promise<string[]> {
-  const memberCacheKey = `${session.platform}:${session.guildId}`;
-  const currentTime = Date.now();
-  const cachedMembers = cacheStore.memberListCache.get(memberCacheKey);
-
-  if (cachedMembers && cachedMembers.expiry > currentTime) {
-    return cachedMembers.members;
-  }
+  const key = CONSTANTS.CACHE_KEYS.MEMBER_LIST(session.platform, session.guildId);
+  const cached = getCached(key, cacheStore.memberList);
+  if (cached) return cached;
 
   try {
     const memberList = await session.onebot.getGroupMemberList(session.guildId);
@@ -97,22 +110,10 @@ export async function getCachedMemberList(session): Promise<string[]> {
         String(member.user_id) !== String(session.selfId))
       .map(member => String(member.user_id));
 
-    if (!Array.isArray(filteredMembers)) {
-      throw new Error('Invalid member list format');
-    }
-
-    cacheStore.memberListCache.set(memberCacheKey, {
-      members: filteredMembers,
-      expiry: currentTime + cacheConfig.memberListExpiry
-    });
-
+    setCached(key, filteredMembers, cacheStore.memberList, cacheConfig.memberListExpiry);
     return filteredMembers;
   } catch (error) {
     console.error('Failed to get member list:', error);
-    // 如果获取失败但有缓存，使用过期的缓存作为后备
-    if (cachedMembers) {
-      return cachedMembers.members;
-    }
     return [];
   }
 }
@@ -125,9 +126,9 @@ export async function getCachedMemberList(session): Promise<string[]> {
 export function startCacheCleaner(interval = 21600000) {
   setInterval(() => {
     const now = Date.now();
-    for (const cache of Object.values(cacheStore)) {
-      for (const [key, value] of cache.entries()) {
-        if (value.expiry <= now) cache.delete(key);
+    for (const map of Object.values(cacheStore)) {
+      for (const [key, entry] of map.entries()) {
+        if (entry.expiry <= now) map.delete(key);
       }
     }
   }, interval);
@@ -295,30 +296,32 @@ export function parseTarget(input: string): string | null {
 }
 
 /**
- * 获取缓存的愚人模式表达式
- * @param {string} key - 缓存键
- * @returns {string[]|null} 缓存的表达式数组，不存在或过期则返回null
+ * 获取缓存的二进制表达式
  */
-export function getCachedFoolExpressions(key: string): string[] | null {
-  if (!key.startsWith('fool:')) return null; // 只处理愚人模式的缓存
-  const cached = cacheStore.foolCache.get(key);
-  if (cached && cached.expiry > Date.now()) {
-    return cached.expressions;
-  }
-  return null;
+export function getCachedBinaryExpression(score: number): string | null {
+  return getCached(CONSTANTS.CACHE_KEYS.JRRP.FOOL.BINARY(score), cacheStore.jrrpFool) as string | null;
 }
 
 /**
- * 设置愚人模式表达式缓存
- * @param {string} key - 缓存键
- * @param {string[]} expressions - 要缓存的表达式数组
+ * 设置二进制表达式缓存
  */
-export function setCachedFoolExpressions(key: string, expressions: string[]): void {
-  if (!key.startsWith('fool:')) return; // 只处理愚人模式的缓存
-  cacheStore.foolCache.set(key, {
-    expressions,
-    expiry: Date.now() + cacheConfig.foolExpiry
-  });
+export function setCachedBinaryExpression(score: number, expression: string): void {
+  setCached(CONSTANTS.CACHE_KEYS.JRRP.FOOL.BINARY(score), expression, cacheStore.jrrpFool);
+}
+
+/**
+ * 获取缓存的数学表达式
+ */
+export function getCachedMathExpression(score: number): string[] | null {
+  const result = getCached(CONSTANTS.CACHE_KEYS.JRRP.FOOL.EXPRESSION(score), cacheStore.jrrpFool);
+  return Array.isArray(result) ? result : null;
+}
+
+/**
+ * 设置数学表达式缓存
+ */
+export function setCachedMathExpression(score: number, expressions: string[]): void {
+  setCached(CONSTANTS.CACHE_KEYS.JRRP.FOOL.EXPRESSION(score), expressions, cacheStore.jrrpFool);
 }
 
 /**
@@ -326,13 +329,8 @@ export function setCachedFoolExpressions(key: string, expressions: string[]): vo
  * @param key - 缓存键
  * @returns 缓存的结果字符串，不存在或过期则返回null
  */
-export function getCachedNormalResult(key: string): string | null {
-  if (!key.startsWith('normal:')) return null;
-  const cached = cacheStore.normalResultCache.get(key);
-  if (cached && cached.expiry > Date.now()) {
-    return cached.result;
-  }
-  return null;
+export function getCachedScore(seed: string): number | null {
+  return getCached(CONSTANTS.CACHE_KEYS.JRRP.SCORE(seed), cacheStore.jrrpScore);
 }
 
 /**
@@ -340,10 +338,37 @@ export function getCachedNormalResult(key: string): string | null {
  * @param key - 缓存键
  * @param result - 要缓存的结果字符串
  */
-export function setCachedNormalResult(key: string, result: string): void {
-  if (!key.startsWith('normal:')) return;
-  cacheStore.normalResultCache.set(key, {
-    result,
-    expiry: Date.now() + cacheConfig.normalResultExpiry
+export function setCachedScore(seed: string, score: number): void {
+  setCached(CONSTANTS.CACHE_KEYS.JRRP.SCORE(seed), score, cacheStore.jrrpScore);
+}
+
+/**
+ * 统一的缓存管理函数
+ * @template T
+ * @param {string} key - 缓存键
+ * @param {Map<string, CacheEntry<T>>} map - 缓存存储映射
+ * @returns {T|null} 缓存的数据，不存在或过期则返回null
+ */
+function getCached<T>(key: string, map: Map<string, CacheEntry<T>>): T | null {
+  const entry = map.get(key);
+  if (entry && entry.expiry > Date.now()) {
+    return entry.data;
+  }
+  map.delete(key); // 自动清理过期数据
+  return null;
+}
+
+/**
+ * 设置缓存数据
+ * @template T
+ * @param {string} key - 缓存键
+ * @param {T} data - 要缓存的数据
+ * @param {Map<string, CacheEntry<T>>} map - 缓存存储映射
+ * @param {number} [expiry=cacheConfig.jrrpExpiry] - 缓存过期时间，默认使用cacheConfig.jrrpExpiry
+ */
+function setCached<T>(key: string, data: T, map: Map<string, CacheEntry<T>>, expiry = cacheConfig.jrrpExpiry): void {
+  map.set(key, {
+    data,
+    expiry: Date.now() + expiry
   });
 }
