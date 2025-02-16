@@ -2,8 +2,6 @@ import { Context } from 'koishi'
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import { DisplayMode, FoolConfig, FoolMode } from '..';
-import { CONSTANTS } from './utils';
-import * as utils from './utils';
 
 /**
  * JRRP识别码模式处理类
@@ -23,16 +21,8 @@ export class JrrpIdentificationMode {
   /** 存储数字到表达式的映射，用于生成数学表达式 */
   private digitExpressions = new Map<number, string>();
 
-  private operators = [
-    { op: '+', calc: (a: number, b: number) => a + b, weight: 10 },
-    { op: '-', calc: (a: number, b: number) => a - b, weight: 8 },
-    { op: '*', calc: (a: number, b: number) => a * b, weight: 6 },
-    { op: '<<', calc: (a: number, b: number) => a << b, weight: 4 },
-    { op: '>>', calc: (a: number, b: number) => a >> b, weight: 4 },
-    { op: '|', calc: (a: number, b: number) => a | b, weight: 3 },
-    { op: '&', calc: (a: number, b: number) => a & b, weight: 3 },
-    { op: '^', calc: (a: number, b: number) => a ^ b, weight: 2 }
-  ];
+  /** 标记是否已经初始化过表达式映射 */
+  private expressionsInitialized = false;
 
   /**
    * 创建JRRP特殊模式处理实例
@@ -72,14 +62,11 @@ export class JrrpIdentificationMode {
    */
   private async loadData(): Promise<void> {
     try {
-      const exists = await fs.access(this.JRRP_DATA_PATH)
-        .then(() => true)
-        .catch(() => false);
+      const data = await fs.readFile(this.JRRP_DATA_PATH, 'utf8')
+        .then(content => JSON.parse(content))
+        .catch(() => ({ codes: {}, first100: {} }));
 
-      if (exists) {
-        const data = JSON.parse(await fs.readFile(this.JRRP_DATA_PATH, 'utf8'));
-        await this.batchLoadData(data);
-      }
+      await this.batchLoadData(data);
     } catch (error) {
       this.ctx.logger.error('Failed to load JRRP data:', error);
     }
@@ -90,9 +77,7 @@ export class JrrpIdentificationMode {
    */
   private async saveData(): Promise<void> {
     try {
-      const dir = path.dirname(this.JRRP_DATA_PATH);
-      await fs.mkdir(dir, { recursive: true });
-
+      await fs.mkdir(path.dirname(this.JRRP_DATA_PATH), { recursive: true });
       const data = {
         codes: Object.fromEntries(this.identificationCodes),
         first100: Object.fromEntries(this.first100Records)
@@ -218,47 +203,42 @@ export class JrrpIdentificationMode {
   }
 
   /**
-   * 初始化基础数字的表达式映射
-   * @param baseNumber - 用于生成表达式的基础数字
-   */
-  private initDigitExpressions(baseNumber: number): void {
-    if (this.digitExpressions.size) return;
-
-    const b = baseNumber;
-    this.digitExpressions.set(b, String(b));
-
-    // 如果基础数字在1-9之间，对应数字直接使用基础数字本身
-    for (let i = 1; i <= 9; i++) {
-      if (i === b) continue; // 跳过基础数字本身，因为已经设置过了
-      if (i <= 9) {
-        this.digitExpressions.set(i, String(b === i ? b : i));
-      }
-    }
-
-    // 设置需要特殊处理的数字
-    this.digitExpressions.set(0, `(${b} ^ ${b})`);
-    this.digitExpressions.set(10, `((${b} << ${b} / ${b}) + (${b} >> ${b} / ${b}))`);
-
-    // 如果基础数字不是对应数字，则使用原来的表达式
-    if (b !== 1) this.digitExpressions.set(1, `(${b} / ${b})`);
-    if (b !== 2) this.digitExpressions.set(2, `(${b} >> (${b} / ${b})`);
-    if (b !== 3) this.digitExpressions.set(3, `(${b} / (${b} / ${b} << ${b} / ${b}))`);
-    if (b !== 4) this.digitExpressions.set(4, `(${b} & (${b} | (${b} / ${b})))`);
-    if (b !== 5) this.digitExpressions.set(5, `(${b} - ${b} / ${b})`);
-    if (b !== 6) this.digitExpressions.set(6, `(${b} + (${b} / ${b} >> ${b} / ${b}))`);
-    if (b !== 7) this.digitExpressions.set(7, `(${b} + ${b} / ${b})`);
-    if (b !== 8) this.digitExpressions.set(8, `(${b} + ${b} / ${b} << ${b} / ${b})`);
-    if (b !== 9) this.digitExpressions.set(9, `(${b} | (${b} >> ${b} / ${b}))`);
-  }
-
-  /**
    * 获取指定数字对应的数学表达式
    * @param n - 需要获取表达式的数字
    * @param baseNumber - 用于生成表达式的基础数字
    * @returns 返回对应数字的表达式字符串
    */
   private getDigitExpr(n: number, baseNumber: number): string {
-    this.initDigitExpressions(baseNumber);
+    if (!this.expressionsInitialized) {
+      const b = baseNumber;
+      this.digitExpressions.set(b, String(b));
+
+      // 设置1-9的数字表达式
+      for (let i = 1; i <= 9; i++) {
+        if (i === b) continue;
+        if (i <= 9) {
+          this.digitExpressions.set(i, String(b === i ? b : i));
+        }
+      }
+
+      // 设置需要特殊处理的数字
+      this.digitExpressions.set(0, `(${b} ^ ${b})`);
+      this.digitExpressions.set(10, `((${b} << ${b} / ${b}) + (${b} >> ${b} / ${b}))`);
+
+      // 如果基础数字不是对应数字，设置特殊表达式
+      if (b !== 1) this.digitExpressions.set(1, `(${b} / ${b})`);
+      if (b !== 2) this.digitExpressions.set(2, `(${b} >> (${b} / ${b})`);
+      if (b !== 3) this.digitExpressions.set(3, `(${b} / (${b} / ${b} << ${b} / ${b}))`);
+      if (b !== 4) this.digitExpressions.set(4, `(${b} & (${b} | (${b} / ${b})))`);
+      if (b !== 5) this.digitExpressions.set(5, `(${b} - ${b} / ${b})`);
+      if (b !== 6) this.digitExpressions.set(6, `(${b} + (${b} / ${b} >> ${b} / ${b}))`);
+      if (b !== 7) this.digitExpressions.set(7, `(${b} + ${b} / ${b})`);
+      if (b !== 8) this.digitExpressions.set(8, `(${b} + ${b} / ${b} << ${b} / ${b})`);
+      if (b !== 9) this.digitExpressions.set(9, `(${b} | (${b} >> ${b} / ${b}))`);
+
+      this.expressionsInitialized = true;
+    }
+
     return this.digitExpressions.get(n) || String(n);
   }
 
@@ -269,22 +249,46 @@ export class JrrpIdentificationMode {
    * @returns 返回一个基于十进制的数学表达式
    */
   private generateDecimalExpression(target: number, baseNumber: number): string {
-    // 处理特殊情况
-    if (target === 0) return this.getDigitExpr(0, baseNumber);
-    if (target === 100) return `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+    // 处理特殊情况和缓存
     if (target <= 10) return this.getDigitExpr(target, baseNumber);
+    const cached = this.digitExpressions.get(target);
+    if (cached) return cached;
 
-    // 处理11-99的数字
+    // 处理100的特殊情况
+    if (target === 100) {
+      const expr = `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+      this.digitExpressions.set(100, expr);
+      return expr;
+    }
+
     const tens = Math.floor(target / 10);
     const ones = target % 10;
 
-    if (tens === 1) {
-      return `(${this.getDigitExpr(10, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
+    // 生成表达式
+    let expr: string;
+    if (target <= 20) {
+      // 11-20的数字使用加法表示
+      expr = `(${this.getDigitExpr(10, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
+    } else if (ones === 0) {
+      // 整十数使用乘法表示
+      expr = `(${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+    } else if (target <= 50) {
+      // 50以内的数字使用乘加形式
+      expr = `((${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)}) + ${this.getDigitExpr(ones, baseNumber)})`;
+    } else {
+      // 50以上的数字尝试使用更简洁的表达式
+      const nearestTen = tens * 10;
+      if (ones <= 5) {
+        expr = `(${this.generateDecimalExpression(nearestTen, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
+      } else {
+        const nextTen = (tens + 1) * 10;
+        expr = `(${this.generateDecimalExpression(nextTen, baseNumber)} - ${this.getDigitExpr(10 - ones, baseNumber)})`;
+      }
     }
-    if (ones === 0) {
-      return `(${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
-    }
-    return `((${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)}) + ${this.getDigitExpr(ones, baseNumber)})`;
+
+    // 缓存生成的表达式
+    this.digitExpressions.set(target, expr);
+    return expr;
   }
 
   /**
@@ -294,82 +298,107 @@ export class JrrpIdentificationMode {
    * @returns 返回一个基于质因数分解的数学表达式
    */
   private generatePrimeFactorsExpression(target: number, baseNumber: number): string {
-    if (target <= 1) return this.generateDecimalExpression(target, baseNumber);
+    // 处理10以内的数字直接返回表达式
+    if (target <= 10) return this.getDigitExpr(target, baseNumber);
 
-    // 尝试使用大数因式分解
-    const tryDecompose = (num: number): number[] | null => {
-      // 从大到小尝试基础数字
-      for (let i = 9; i >= 2; i--) {
+    // 检查是否在预设表达式中
+    const expr = this.digitExpressions.get(target);
+    if (expr) return expr;
+    if (target === 100) return `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+
+    // 递归分解函数
+    const decompose = (num: number): string => {
+      if (num <= 10) return this.getDigitExpr(num, baseNumber);
+
+      const predefinedExpr = this.digitExpressions.get(num);
+      if (predefinedExpr) return predefinedExpr;
+
+      // 尝试因式分解
+      for (let i = Math.min(9, Math.floor(Math.sqrt(num))); i >= 2; i--) {
         if (num % i === 0) {
           const quotient = num / i;
-          if (quotient <= 9) {
-            return [i, quotient];
+          if (quotient <= 10) {
+            return `(${this.getDigitExpr(i, baseNumber)} * ${this.getDigitExpr(quotient, baseNumber)})`;
           }
-          // 递归尝试分解商
-          const subResult = tryDecompose(quotient);
-          if (subResult) {
-            return [i, ...subResult];
-          }
+          // 递归分解较大的因子
+          return `(${this.getDigitExpr(i, baseNumber)} * ${decompose(quotient)})`;
         }
       }
-      return null;
-    };
 
-    // 寻找最近的可分解数
-    const findNearestDecomposable = (num: number): [number, number] => {
-      let lower = num - 1;
-      let upper = num + 1;
-
-      while (lower > 1 || upper <= 100) {
-        if (lower > 1 && tryDecompose(lower)) {
-          return [lower, num - lower]; // 需要加上差值
-        }
-        if (upper <= 100 && tryDecompose(upper)) {
-          return [upper, lower - upper]; // 需要减去差值
-        }
-        lower--;
-        upper++;
+      // 无法分解时使用加减法
+      const base = Math.floor(num / 10) * 10;
+      const diff = num - base;
+      if (diff === 0) {
+        return decompose(num / 10) + ` * ${this.getDigitExpr(10, baseNumber)}`;
       }
-
-      return [num, 0]; // 降级为十进制表示
+      return diff > 0
+        ? `(${decompose(base)} + ${this.getDigitExpr(diff, baseNumber)})`
+        : `(${decompose(base)} - ${this.getDigitExpr(-diff, baseNumber)})`;
     };
 
-    // 尝试直接分解
-    const factors = tryDecompose(target);
-    if (factors) {
-      // 将因子转换为表达式并随机打乱顺序
-      const factorExprs = factors
-        .map(f => this.generateDecimalExpression(f, baseNumber))
-        .sort(() => Math.random() - 0.5);  // 随机打乱数组顺序
-      return `(${factorExprs.join(' * ')})`;
+    return decompose(target);
+  }
+
+  /**
+   * 使用最简方式生成表达式，仅使用基础数字
+   * @param target - 目标数值
+   * @param baseNumber - 基础数字
+   * @returns 返回一个简洁的数学表达式
+   */
+  private generateMinimalExpression(target: number, baseNumber: number): string {
+    // 处理特殊情况
+    if (target === baseNumber) return this.getDigitExpr(target, baseNumber);
+    if (target === 0) return `(${this.getDigitExpr(baseNumber, baseNumber)} - ${this.getDigitExpr(baseNumber, baseNumber)})`;
+    if (target === 1) return `(${this.getDigitExpr(baseNumber, baseNumber)} / ${this.getDigitExpr(baseNumber, baseNumber)})`;
+
+    // 计算最接近的幂
+    const power = Math.floor(Math.log(target) / Math.log(baseNumber));
+    const powerResult = Math.pow(baseNumber, power);
+
+    let expr = power === 1 ? this.getDigitExpr(baseNumber, baseNumber) : `(${this.getDigitExpr(baseNumber, baseNumber)}`;
+    for (let i = 1; i < power; i++) {
+      expr += ` * ${this.getDigitExpr(baseNumber, baseNumber)}`;
+    }
+    expr += power > 1 ? ')' : '';
+
+    const diff = target - powerResult;
+    if (diff === 0) return expr;
+
+    // 使用getDigitExpr处理差值
+    const diffAbs = Math.abs(diff);
+    let diffExpr: string;
+
+    if (diffAbs <= baseNumber) {
+      diffExpr = this.getDigitExpr(diffAbs, baseNumber);
+    } else {
+      const nextPower = Math.floor(Math.log(diffAbs) / Math.log(baseNumber));
+      const nextValue = Math.pow(baseNumber, nextPower);
+      if (nextValue === diffAbs) {
+        diffExpr = this.generateMinimalExpression(diffAbs, baseNumber);
+      } else {
+        const remain = diffAbs - nextValue;
+        if (remain > 0) {
+          diffExpr = `(${this.generateMinimalExpression(nextValue, baseNumber)} + ${this.getDigitExpr(remain, baseNumber)})`;
+        } else {
+          diffExpr = `(${this.generateMinimalExpression(nextValue, baseNumber)} - ${this.getDigitExpr(-remain, baseNumber)})`;
+        }
+      }
     }
 
-    // 使用最近的可分解数
-    const [base, diff] = findNearestDecomposable(target);
-    if (diff === 0) {
-      return this.generateDecimalExpression(target, baseNumber);
-    }
-
-    const baseExpr = this.generatePrimeFactorsExpression(base, baseNumber);
-    const diffExpr = this.generateDecimalExpression(Math.abs(diff), baseNumber);
-
-    // 根据差值是正数还是负数决定加减
-    return diff > 0
-      ? `(${baseExpr} + ${diffExpr})`
-      : `(${baseExpr} - ${diffExpr})`;
+    return `(${expr} ${diff > 0 ? '+' : '-'} ${diffExpr})`;
   }
 
   /**
    * 根据娱乐模式设置格式化分数显示
    */
   public formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
-    if (foolConfig.type !== FoolMode.ENABLED ||
-        (foolConfig.date && (() => {
-          const [targetMonth, targetDay] = foolConfig.date.split('-').map(Number);
-          return !isNaN(targetMonth) && !isNaN(targetDay) &&
-                 ((date.getMonth() + 1) !== targetMonth ||
-                  date.getDate() !== targetDay);
-        })())) {
+    const isValidFoolDate = () => {
+      if (!foolConfig.date) return true;
+      const [month, day] = foolConfig.date.split('-').map(Number);
+      return date.getMonth() + 1 === month && date.getDate() === day;
+    };
+
+    if (foolConfig.type !== FoolMode.ENABLED || !isValidFoolDate()) {
       return score.toString();
     }
 
@@ -377,15 +406,16 @@ export class JrrpIdentificationMode {
       switch (foolConfig.displayMode) {
         case DisplayMode.BINARY:
           return score.toString(2);
-
-        case DisplayMode.EXPRESSION: {
+        case DisplayMode.EXPRESSION:
           const baseNumber = foolConfig.baseNumber ?? 6;
-          // 随机选择使用十进制或质因数分解方式
-          return Math.random() < 0.5
-            ? this.generateDecimalExpression(score, baseNumber)
-            : this.generatePrimeFactorsExpression(score, baseNumber);
-        }
-
+          const rand = Math.random();
+          if (rand < 0.33) {
+            return this.generateDecimalExpression(score, baseNumber);
+          } else if (rand < 0.66) {
+            return this.generatePrimeFactorsExpression(score, baseNumber);
+          } else {
+            return this.generateMinimalExpression(score, baseNumber);
+          }
         default:
           return score.toString();
       }

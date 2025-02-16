@@ -169,7 +169,8 @@ commands:
         8: "Spare"
         9: "Spare"
         10: "Spare"
-      special_mode:
+      identification_mode:
+        need_bind: "Please bind your identification code first"
         invalid_code: "Invalid identification code format! Please use XXXX-XXXX-XXXX-XXXX format"
         bind_success: "Identification code bound successfully!"
         unbind_success: "Identification code unbound successfully!"

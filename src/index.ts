@@ -578,7 +578,14 @@ export async function apply(ctx: Context, config: Config) {
             // 处理解绑
             if (!options.b) {
               await jrrpIdentification.removeIdentificationCode(session.userId);
-              const message = await session.send(session.text('commands.jrrp.messages.special_mode.unbind_success'));
+              const message = await session.send(session.text('commands.jrrp.messages.identification_mode.unbind_success'));
+              await utils.autoRecall(session, message);
+              return;
+            }
+
+            // 处理首次使用绑定命令但没有提供识别码的情况
+            if (!jrrpIdentification.getIdentificationCode(session.userId)) {
+              const message = await session.send(session.text('commands.jrrp.messages.identification_mode.need_bind'));
               await utils.autoRecall(session, message);
               return;
             }
@@ -588,7 +595,7 @@ export async function apply(ctx: Context, config: Config) {
 
             // 格式验证
             if (!code || !jrrpIdentification.validateIdentificationCode(code)) {
-              const message = await session.send(session.text('commands.jrrp.messages.special_mode.invalid_code'));
+              const message = await session.send(session.text('commands.jrrp.messages.identification_mode.invalid_code'));
               await utils.autoRecall(session, message);
               return;
             }
@@ -597,7 +604,7 @@ export async function apply(ctx: Context, config: Config) {
 
             // 检查重复绑定
             if (existingCode === code) {
-              const message = await session.send(session.text('commands.jrrp.messages.special_mode.already_bound'));
+              const message = await session.send(session.text('commands.jrrp.messages.identification_mode.already_bound'));
               await utils.autoRecall(session, message);
               return;
             }
@@ -605,7 +612,7 @@ export async function apply(ctx: Context, config: Config) {
             // 执行绑定
             await jrrpIdentification.bindIdentificationCode(session.userId, code);
             const message = await session.send(session.text(
-              existingCode ? 'commands.jrrp.messages.special_mode.rebind_success' : 'commands.jrrp.messages.special_mode.bind_success'
+              existingCode ? 'commands.jrrp.messages.identification_mode.rebind_success' : 'commands.jrrp.messages.identification_mode.bind_success'
             ));
             await utils.autoRecall(session, message);
             return;
@@ -665,7 +672,7 @@ export async function apply(ctx: Context, config: Config) {
 
         // 处理特殊码零分确认
         if (identificationCode && userFortune === 0) {
-          await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
+          await session.send(session.text('commands.jrrp.messages.identification_mode.zero_prompt'));
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
           if (!response || response.toLowerCase() !== 'y') {
             const message = await session.send(session.text('commands.jrrp.messages.cancel'));
@@ -682,7 +689,7 @@ export async function apply(ctx: Context, config: Config) {
         if (identificationCode && userFortune === 100 && jrrpIdentification.isFirst100(session.userId)) {
           await jrrpIdentification.markFirst100(session.userId);
           fortuneResultText += session.text(config.specialMessages[userFortune]) +
-                        '\n' + session.text('commands.jrrp.messages.special_mode.first_100');
+                        '\n' + session.text('commands.jrrp.messages.identification_mode.first_100');
         } else if (config.specialMessages?.[userFortune]) {
           fortuneResultText += session.text(config.specialMessages[userFortune]);
         } else if (config.rangeMessages) {

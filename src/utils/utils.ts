@@ -1,3 +1,8 @@
+/**
+ * @fileoverview 工具函数模块，提供通用工具函数和缓存管理功能
+ * @module utils
+ */
+
 import { Session, h } from 'koishi';
 
 /**
@@ -62,10 +67,11 @@ export const cacheStore = {
 
 /**
  * 自动撤回消息
- * @param {Session} session - 会话上下文
- * @param {string|string[]|object|object[]} message - 要撤回的消息或消息ID数组
+ * @param {Session} session - 会话上下文，用于执行消息操作
+ * @param {string|string[]|object|object[]} message - 要撤回的消息或消息ID数组。可以是消息ID字符串、消息对象或它们的数组
  * @param {number} [delay] - 延迟撤回时间（毫秒），默认使用 CONSTANTS.TIMEOUTS.AUTO_RECALL
- * @returns {Promise<Function>} 取消撤回的函数
+ * @returns {Promise<Function>} 返回一个取消撤回的函数，调用该函数可以阻止消息被撤回
+ * @throws {Error} 当消息删除操作失败时可能抛出错误
  */
 export async function autoRecall(session, message, delay = CONSTANTS.TIMEOUTS.AUTO_RECALL) {
   if (!message) return;
@@ -89,8 +95,10 @@ export async function autoRecall(session, message, delay = CONSTANTS.TIMEOUTS.AU
 
 /**
  * 获取缓存的群成员列表
- * @param {Session} session - 会话上下文
- * @returns {Promise<string[]>} 群成员ID列表
+ * @param {Session} session - 会话上下文，包含群组和平台信息
+ * @returns {Promise<string[]>} 返回群成员ID列表，如果获取失败则返回空数组
+ * @throws {Error} 当群成员列表获取失败时可能抛出错误
+ * @description 该函数会优先从缓存中获取群成员列表，如果缓存不存在或已过期，则重新获取并更新缓存
  */
 export async function getCachedMemberList(session): Promise<string[]> {
   const key = CONSTANTS.CACHE_KEYS.MEMBER_LIST(session.platform, session.guildId);
@@ -114,9 +122,10 @@ export async function getCachedMemberList(session): Promise<string[]> {
 }
 
 /**
- * 启动缓存清理器，定期清理过期的缓存数据
- * @param {number} [interval] - 清理间隔时间（毫秒），默认6小时
- * @returns {void}
+ * 启动缓存清理器
+ * @param {number} [interval=21600000] - 清理间隔时间（毫秒），默认6小时
+ * @returns {NodeJS.Timeout} 返回定时器句柄
+ * @description 定期清理所有过期的缓存数据，包括群成员列表和JRRP分数缓存
  */
 export function startCacheCleaner(interval = 21600000) {
   setInterval(() => {
@@ -131,8 +140,9 @@ export function startCacheCleaner(interval = 21600000) {
 
 /**
  * 计算字符串的哈希值
- * @param {string} inputStr - 输入字符串
- * @returns {number} 32位无符号整数哈希值
+ * @param {string} inputStr - 要计算哈希值的输入字符串
+ * @returns {number} 返回计算得到的32位无符号整数哈希值
+ * @description 使用 DJB2 哈希算法计算字符串的哈希值
  */
 export function hashCode(inputStr: string): number { // 改进：str -> inputStr
   let hashValue = 5381; // 改进：hash -> hashValue
@@ -145,9 +155,10 @@ export function hashCode(inputStr: string): number { // 改进：str -> inputStr
 
 /**
  * 解析并验证日期字符串
- * @param {string} dateStr - 日期字符串，支持YYYY-MM-DD、YY-MM-DD、MM-DD等格式
- * @param {Date} defaultDate - 默认日期，用于补充年份信息
- * @returns {Date|null} 解析后的日期对象，解析失败则返回null
+ * @param {string} dateStr - 日期字符串，支持 YYYY-MM-DD、YY-MM-DD、MM-DD 等格式
+ * @param {Date} defaultDate - 默认日期对象，用于补充省略的年份信息
+ * @returns {Date|null} 解析成功返回日期对象，失败返回 null
+ * @description 支持多种日期格式，自动处理两位年份，并进行严格的日期有效性验证
  */
 export function parseDate(dateStr: string, defaultDate: Date): Date | null {
   // 标准化日期字符串，支持点号和斜杠分隔
@@ -186,12 +197,13 @@ export function parseDate(dateStr: string, defaultDate: Date): Date | null {
 }
 
 /**
- * 执行禁言操作并处理结果
- * @param {Session} session - 会话上下文
+ * 执行禁言操作
+ * @param {Session} session - 会话上下文，包含群组和用户信息
  * @param {string} targetId - 目标用户ID
  * @param {number} muteDuration - 禁言时长（秒）
  * @param {boolean} enableMessage - 是否发送禁言提示消息
- * @returns {Promise<boolean>} 操作是否成功
+ * @returns {Promise<boolean>} 操作成功返回 true，失败返回 false
+ * @description 执行禁言操作并处理相关消息，支持自动清理命令消息和发送提示
  */
 export async function executeMute(session: Session, targetId: string, muteDuration: number, enableMessage: boolean): Promise<boolean> {
   try {
@@ -227,10 +239,14 @@ export async function executeMute(session: Session, targetId: string, muteDurati
 /**
  * 处理特定分数的日期查找
  * @param {Session} session - 会话上下文
- * @param {number} targetScore - 目标分数
- * @param {string|null} specialCode - 特殊代码
+ * @param {number} targetScore - 要查找的目标分数
+ * @param {string|null} specialCode - 特殊计算代码，用于自定义计算逻辑
  * @param {Function} calculateScore - 分数计算函数
+ * @param {string} calculateScore.userDateSeed - 用户日期种子字符串
+ * @param {Date} calculateScore.date - 日期对象
+ * @param {string|undefined} calculateScore.specialCode - 特殊计算代码
  * @returns {Promise<void>}
+ * @description 在未来一年内查找可能出现目标分数的日期
  */
 export async function findDateForScore(
   session: Session,
@@ -261,9 +277,10 @@ export async function findDateForScore(
 /**
  * 检查并处理节日消息
  * @param {Session} session - 会话上下文
- * @param {string} monthDay - 月日字符串（MM-DD格式）
- * @param {Record<string, string>} holidayMessages - 节日消息配置
- * @returns {Promise<boolean>} 是否继续执行后续操作
+ * @param {string} monthDay - 月日字符串，格式为 MM-DD
+ * @param {Record<string, string>} holidayMessages - 节日消息配置对象，键为月日，值为消息文本
+ * @returns {Promise<boolean>} 如果用户确认继续则返回 true，否则返回 false
+ * @description 检查特定日期是否有节日消息，并处理用户交互
  */
 export async function handleHolidayMessage(session: Session, monthDay: string, holidayMessages: Record<string, string>): Promise<boolean> {
   if (holidayMessages?.[monthDay]) {
@@ -310,10 +327,11 @@ export function setCachedScore(seed: string, score: number): void {
 
 /**
  * 统一的缓存管理函数
- * @template T
+ * @template T 缓存数据的类型
  * @param {string} key - 缓存键
  * @param {Map<string, CacheEntry<T>>} map - 缓存存储映射
- * @returns {T|null} 缓存的数据，不存在或过期则返回null
+ * @returns {T|null} 返回缓存的数据，如果不存在或已过期则返回 null
+ * @description 获取缓存数据，自动处理过期清理
  */
 function getCached<T>(key: string, map: Map<string, CacheEntry<T>>): T | null {
   const entry = map.get(key);
@@ -326,11 +344,12 @@ function getCached<T>(key: string, map: Map<string, CacheEntry<T>>): T | null {
 
 /**
  * 设置缓存数据
- * @template T
+ * @template T 缓存数据的类型
  * @param {string} key - 缓存键
  * @param {T} data - 要缓存的数据
  * @param {Map<string, CacheEntry<T>>} map - 缓存存储映射
- * @param {number} [expiry=cacheConfig.jrrpExpiry] - 缓存过期时间，默认使用cacheConfig.jrrpExpiry
+ * @param {number} [expiry] - 缓存过期时间（毫秒），默认使用 cacheConfig.jrrpExpiry
+ * @description 将数据存入缓存，并设置过期时间
  */
 function setCached<T>(key: string, data: T, map: Map<string, CacheEntry<T>>, expiry = cacheConfig.jrrpExpiry): void {
   map.set(key, {

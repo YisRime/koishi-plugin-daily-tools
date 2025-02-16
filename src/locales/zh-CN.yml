@@ -169,7 +169,8 @@ commands:
         8: "备用"
         9: "备用"
         10: "备用"
-      special_mode:
+      identification_mode:
+        need_bind: "请先绑定识别码！"
         invalid_code: "识别码格式错误！请使用形如 XXXX-XXXX-XXXX-XXXX 的格式"
         bind_success: "识别码绑定成功！"
         unbind_success: "识别码解绑成功！"
