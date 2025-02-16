@@ -569,12 +569,12 @@ export async function apply(ctx: Context, config: Config) {
    * 5. 支持分数显示格式化
    */
   ctx.command('jrrp')
-    .option('d', '-d <date:string>', { fallback: null })
-    .option('g', '-g <score:integer>', { fallback: null })
-    .option('b', '-b [code:string]', { fallback: null })
+    .option('d', '-d <date:string>')
+    .option('g', '-g <score:integer>')
+    .option('b', '-b [code:string]')
     .action(async ({ session, options }) => {
       // 处理识别码绑定
-      if ('b' in options) {
+      if (options?.b !== undefined) {
           try {
             // 尝试删除原始命令消息
             if (session.messageId) {
@@ -624,7 +624,7 @@ export async function apply(ctx: Context, config: Config) {
       }
 
       // 处理查找特定分数的日期
-      if (options.g !== null) {
+      if (options?.g !== undefined && options.g !== null) {
         // 验证分数范围和处理逻辑保持不变...
         if (!Number.isInteger(options.g) || options.g < 0 || options.g > 100) {
           const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
