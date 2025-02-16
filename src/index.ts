@@ -257,12 +257,7 @@ export async function apply(ctx: Context, config: Config) {
    * 结果会被缓存以提高性能
    */
   function calculateScore(userDateSeed: string, date: Date, identificationCode: string | undefined): number {
-    const cacheKey = `score:${userDateSeed}:${identificationCode || 'normal'}`;
-    const cachedScore = utils.getCachedScore(cacheKey);
-    if (cachedScore !== null) {
-      return cachedScore;
-    }
-
+    // 删除旧的缓存检查，因为分数现在直接以字符串形式存储在 normalResultCache 中
     let score: number;
     if (identificationCode) {
       score = jrrpIdentification.calculateJrrpWithCode(identificationCode, date, config.identificationCode);
@@ -307,7 +302,6 @@ export async function apply(ctx: Context, config: Config) {
       }
     }
 
-    utils.setCachedScore(cacheKey, score);
     return score;
   }
 
@@ -671,8 +665,8 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const userNickname = session.username || 'User'
+        const userDateSeed = `${session.userId}-${formattedDateTime}` // 将这行上移到这里作为唯一声明
         let userFortune: number
-        const userDateSeed = `${session.userId}-${formattedDateTime}`
 
         // 1. 首先计算原始分数
         const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
@@ -691,8 +685,9 @@ export async function apply(ctx: Context, config: Config) {
 
         // 3. 检查是否显示愚人模式结果
         let formattedFortune: string;
-        let isUsingFoolMode = false;
 
+        // 检查是否启用愚人模式
+        let isUsingFoolMode = false;
         if (config.fool.type === FoolMode.ENABLED) {
           const [targetMonth, targetDay] = config.fool.date?.split('-').map(Number) || [];
           const currentMonth = dateForCalculation.getMonth() + 1;
@@ -703,10 +698,22 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 4. 根据模式选择显示方式
-        formattedFortune = isUsingFoolMode
-          ? jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool)
-          : userFortune.toString();
+        // 根据模式选择不同的缓存和显示逻辑
+        if (isUsingFoolMode) {
+          // 使用愚人模式的缓存和显示逻辑
+          formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
+        } else {
+          // 使用普通模式的缓存和显示逻辑
+          const normalCacheKey = CONSTANTS.CACHE_KEYS.NORMAL_RESULT(userDateSeed);
+          let cachedResult = utils.getCachedNormalResult(normalCacheKey);
+
+          if (!cachedResult) {
+            cachedResult = userFortune.toString();
+            utils.setCachedNormalResult(normalCacheKey, cachedResult);
+          }
+
+          formattedFortune = cachedResult;
+        }
 
         let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);
 

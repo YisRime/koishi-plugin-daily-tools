@@ -11,6 +11,7 @@ export const CONSTANTS = {
   CACHE_KEYS: {
     MEMBER_LIST: (platform: string, guildId: string) => `members:${platform}:${guildId}`,
     SCORE: (seed: string, type: string) => `score:${seed}:${type}`,
+    NORMAL_RESULT: (seed: string) => `normal:${seed}`, // 新增：普通模式结果缓存键
   },
   TIMEOUTS: {
     PROMPT: 10000,
@@ -21,6 +22,7 @@ export const CONSTANTS = {
     MAX_DAYS_TO_CHECK: 365,
     MAX_CACHE_SIZE: 1000,
     FOOL_CACHE_SIZE: 5, // 愚人模式缓存的结果数量
+    NORMAL_CACHE_SIZE: 1, // 新增：普通模式缓存大小（通常只需要1个）
   }
 };
 
@@ -28,24 +30,22 @@ export const CONSTANTS = {
  * 缓存配置对象，定义各类缓存的过期时间
  * @namespace
  * @property {number} memberListExpiry - 成员列表缓存过期时间（毫秒）
- * @property {number} scoreExpiry - 分数缓存过期时间（毫秒）
  */
 export const cacheConfig = {
   memberListExpiry: 3600000,
-  scoreExpiry: 86400000,
   foolExpiry: 86400000, // 愚人模式缓存24小时过期
+  normalResultExpiry: 86400000, // 新增：普通模式结果缓存24小时过期
 };
 
 /**
  * 缓存存储对象，用于在内存中存储各类数据
  * @namespace
  * @property {Map<string, {members: string[], expiry: number}>} memberListCache - 群成员列表缓存
- * @property {Map<string, {score: number, expiry: number}>} scoreCache - 分数缓存
  */
 export const cacheStore = {
   memberListCache: new Map<string, { members: string[], expiry: number }>(),
-  scoreCache: new Map<string, { score: number, expiry: number }>(),
   foolCache: new Map<string, { expressions: string[], expiry: number }>(),
+  normalResultCache: new Map<string, { result: string, expiry: number }>(), // 新增：普通模式结果缓存
 };
 
 /**
@@ -115,32 +115,6 @@ export async function getCachedMemberList(session): Promise<string[]> {
     }
     return [];
   }
-}
-
-/**
- * 获取缓存的分数
- * @param {string} key - 缓存键
- * @returns {number|null} 缓存的分数，不存在或过期则返回null
- */
-export function getCachedScore(key: string): number | null {
-  const cached = cacheStore.scoreCache.get(key);
-  if (cached && cached.expiry > Date.now()) {
-    return cached.score;
-  }
-  return null;
-}
-
-/**
- * 设置分数缓存
- * @param {string} key - 缓存键
- * @param {number} score - 要缓存的分数
- * @returns {void}
- */
-export function setCachedScore(key: string, score: number): void {
-  cacheStore.scoreCache.set(key, {
-    score,
-    expiry: Date.now() + cacheConfig.scoreExpiry
-  });
 }
 
 /**
@@ -344,5 +318,32 @@ export function setCachedFoolExpressions(key: string, expressions: string[]): vo
   cacheStore.foolCache.set(key, {
     expressions,
     expiry: Date.now() + cacheConfig.foolExpiry
+  });
+}
+
+/**
+ * 获取缓存的普通模式结果
+ * @param key - 缓存键
+ * @returns 缓存的结果字符串，不存在或过期则返回null
+ */
+export function getCachedNormalResult(key: string): string | null {
+  if (!key.startsWith('normal:')) return null;
+  const cached = cacheStore.normalResultCache.get(key);
+  if (cached && cached.expiry > Date.now()) {
+    return cached.result;
+  }
+  return null;
+}
+
+/**
+ * 设置普通模式结果缓存
+ * @param key - 缓存键
+ * @param result - 要缓存的结果字符串
+ */
+export function setCachedNormalResult(key: string, result: string): void {
+  if (!key.startsWith('normal:')) return;
+  cacheStore.normalResultCache.set(key, {
+    result,
+    expiry: Date.now() + cacheConfig.normalResultExpiry
   });
 }
