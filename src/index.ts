@@ -687,16 +687,15 @@ export async function apply(ctx: Context, config: Config) {
         let formattedFortune: string;
 
         // 检查是否启用愚人模式
-        let isUsingFoolMode = false;
-        if (config.fool.type === FoolMode.ENABLED) {
-          const [targetMonth, targetDay] = config.fool.date?.split('-').map(Number) || [];
-          const currentMonth = dateForCalculation.getMonth() + 1;
-          const currentDay = dateForCalculation.getDate();
-
-          if ((!config.fool.date || (currentMonth === targetMonth && currentDay === targetDay))) {
-            isUsingFoolMode = true;
-          }
-        }
+        let isUsingFoolMode = config.fool.type === FoolMode.ENABLED && (
+          !config.fool.date ||
+          (() => {
+            const [targetMonth, targetDay] = config.fool.date.split('-').map(Number);
+            const currentMonth = dateForCalculation.getMonth() + 1;
+            const currentDay = dateForCalculation.getDate();
+            return currentMonth === targetMonth && currentDay === targetDay;
+          })()
+        );
 
         // 根据模式选择不同的缓存和显示逻辑
         if (isUsingFoolMode) {
@@ -705,14 +704,8 @@ export async function apply(ctx: Context, config: Config) {
         } else {
           // 使用普通模式的缓存和显示逻辑
           const normalCacheKey = CONSTANTS.CACHE_KEYS.NORMAL_RESULT(userDateSeed);
-          let cachedResult = utils.getCachedNormalResult(normalCacheKey);
-
-          if (!cachedResult) {
-            cachedResult = userFortune.toString();
-            utils.setCachedNormalResult(normalCacheKey, cachedResult);
-          }
-
-          formattedFortune = cachedResult;
+          formattedFortune = utils.getCachedNormalResult(normalCacheKey) || userFortune.toString();
+          utils.setCachedNormalResult(normalCacheKey, formattedFortune);
         }
 
         let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);

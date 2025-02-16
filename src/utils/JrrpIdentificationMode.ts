@@ -308,20 +308,107 @@ export class JrrpIdentificationMode {
   }
 
   /**
+   * 安全的表达式计算器
+   */
+  private safeEvaluateExpression(expr: string): number {
+    // 使用栈来实现基本的计算器
+    const tokens = this.tokenize(expr);
+    return this.calculateRPN(this.shuntingYard(tokens));
+  }
+
+  /**
+   * 将表达式转换为标记流
+   */
+  private tokenize(expr: string): string[] {
+    // 处理支持的运算符和括号
+    return expr.replace(/([+\-*/()&|^<>])/g, ' $1 ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ')
+      .filter(token => token.length > 0);
+  }
+
+  /**
+   * 使用调度场算法将中缀表达式转换为后缀表达式
+   */
+  private shuntingYard(tokens: string[]): string[] {
+    const output: string[] = [];
+    const operators: string[] = [];
+    const precedence: Record<string, number> = {
+      '<<': 5, '>>': 5,
+      '*': 4, '/': 4,
+      '+': 3, '-': 3,
+      '&': 2, '|': 2, '^': 2,
+    };
+
+    for (const token of tokens) {
+      if (!isNaN(Number(token))) {
+        output.push(token);
+      } else if (token in precedence) {
+        while (
+          operators.length > 0 &&
+          operators[operators.length - 1] !== '(' &&
+          precedence[operators[operators.length - 1]] >= precedence[token]
+        ) {
+          output.push(operators.pop()!);
+        }
+        operators.push(token);
+      } else if (token === '(') {
+        operators.push(token);
+      } else if (token === ')') {
+        while (operators.length > 0 && operators[operators.length - 1] !== '(') {
+          output.push(operators.pop()!);
+        }
+        if (operators.length > 0) operators.pop(); // 移除左括号
+      }
+    }
+
+    while (operators.length > 0) {
+      output.push(operators.pop()!);
+    }
+
+    return output;
+  }
+
+  /**
+   * 计算后缀表达式
+   */
+  private calculateRPN(tokens: string[]): number {
+    const stack: number[] = [];
+
+    for (const token of tokens) {
+      if (!isNaN(Number(token))) {
+        stack.push(Number(token));
+      } else {
+        const b = stack.pop()!;
+        const a = stack.pop()!;
+        switch (token) {
+          case '+': stack.push(a + b); break;
+          case '-': stack.push(a - b); break;
+          case '*': stack.push(a * b); break;
+          case '/': stack.push(Math.floor(a / b)); break;
+          case '&': stack.push(a & b); break;
+          case '|': stack.push(a | b); break;
+          case '^': stack.push(a ^ b); break;
+          case '<<': stack.push(a << b); break;
+          case '>>': stack.push(a >> b); break;
+        }
+      }
+    }
+
+    return stack[0];
+  }
+
+  /**
    * 验证生成的表达式是否正确
    */
   private validateExpression(expr: string, target: number): boolean {
     try {
-      // 1. 替换位运算符为等效的数学运算
-      const safeExpr = expr
-        .replace(/<<\s*(\d+)/g, '* Math.pow(2, $1)') // 左移转换为乘以2的幂
-        .replace(/>>\s*(\d+)/g, '/ Math.pow(2, $1)') // 右移转换为除以2的幂
-        .replace(/\^/g, '**');                        // 将^转换为标准的幂运算符
+      const sanitizedExpr = expr
+        .replace(/Math\.pow\(\d+,\s*\d+\)/g, m => String(eval(m)))  // 预计算所有 Math.pow
+        .replace(/\s+/g, ''); // 移除所有空白字符
 
-      // 2. 使用Number.parseFloat确保结果为数值
-      const result = Number.parseFloat(eval(safeExpr));
-
-      // 3. 使用epsilon比较处理浮点数精度问题
+      const result = this.safeEvaluateExpression(sanitizedExpr);
       const epsilon = 0.0001; // 允许的误差范围
       return Math.abs(result - target) < epsilon;
     } catch (e) {
@@ -614,7 +701,14 @@ export class JrrpIdentificationMode {
 
     for (const op of this.operators) {
       random -= op.weight;
-      if (random <= 0) return op;
+      if (random <= 0) {
+        // 确保返回的运算符信息兼容新的计算器
+        return {
+          op: op.op,
+          calc: (a: number, b: number) => this.safeEvaluateExpression(`${a} ${op.op} ${b}`),
+          weight: op.weight
+        };
+      }
     }
     return this.operators[0];
   }
@@ -641,6 +735,11 @@ export class JrrpIdentificationMode {
    * @returns 根据配置格式化后的分数字符串
    */
   public formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
+    // 确保总是使用娱乐模式格式化分数
+    if (foolConfig.type !== FoolMode.ENABLED) {
+      return score.toString();
+    }
+
     // 生成缓存键,包含分数、显示模式和基数
     const cacheKey = `fool:${score}:${foolConfig.displayMode}:${foolConfig.baseNumber || ''}`;
     let expressions = utils.getCachedFoolExpressions(cacheKey);
@@ -655,7 +754,7 @@ export class JrrpIdentificationMode {
             const base = foolConfig.baseNumber ?? 6;
             return this.generateExpression(score, base); // 每次生成不同的数学表达式
           default:
-            return score.toString();
+            return score.toString(2); // 默认使用二进制，避免显示原始数字
         }
       });
 
