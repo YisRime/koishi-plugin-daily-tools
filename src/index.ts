@@ -193,7 +193,7 @@ export const Config: Schema<Config> = Schema.intersect([
               }),
               Schema.object({
                 displayMode: Schema.const(DisplayMode.EXPRESSION).required(),
-                baseNumber: Schema.number().default(6).min(0).max(9),
+                baseNumber: Schema.number().default(6).min(1).max(9),
               }),
             ]),
           ]),

@@ -21,6 +21,17 @@ export class JrrpIdentificationMode {
   /** 存储数字到表达式的映射，用于生成数学表达式 */
   private digitExpressions = new Map<number, string>();
 
+  private operators = [
+    { op: '+', calc: (a: number, b: number) => a + b, weight: 10 },
+    { op: '-', calc: (a: number, b: number) => a - b, weight: 8 },
+    { op: '*', calc: (a: number, b: number) => a * b, weight: 6 },
+    { op: '<<', calc: (a: number, b: number) => a << b, weight: 4 },
+    { op: '>>', calc: (a: number, b: number) => a >> b, weight: 4 },
+    { op: '|', calc: (a: number, b: number) => a | b, weight: 3 },
+    { op: '&', calc: (a: number, b: number) => a & b, weight: 3 },
+    { op: '^', calc: (a: number, b: number) => a ^ b, weight: 2 }
+  ];
+
   /**
    * 创建JRRP特殊模式处理实例
    * @param ctx - Koishi应用上下文，用于日志记录和其他功能
@@ -205,21 +216,116 @@ export class JrrpIdentificationMode {
   }
 
   /**
-   * 生成一个数学表达式，其计算结果等于目标数值
-   * @param target - 目标数值，需要生成的表达式的计算结果
-   * @param baseNumber - 基础数字，用于构建表达式
+   * 生成一个数学表达式其计算结果等于目标数值
+   * @param target - 目标数值需要生成的表达式的计算结果
+   * @param baseNumber - 基础数字用于构建表达式
    * @returns 返回一个字符串形式的数学表达式
    */
   generateExpression(target: number, baseNumber: number): string {
-    // 随机选择表达式生成方式
-    const methods = [
-      this.generateDecimalExpression.bind(this),
-      this.generatePrimeFactorsExpression.bind(this),
-      this.generateBitOperationExpression.bind(this),
-      this.generateSqrtExpression.bind(this)
+    // 根据目标数值特征选择最适合的生成策略
+    const strategies = [
+      {
+        condition: (n: number) => n <= 10,
+        method: this.generateDecimalExpression.bind(this),
+        weight: 10
+      },
+      {
+        condition: (n: number) => this.isPowerOfTwo(n),
+        method: this.generateBinaryExpression.bind(this),
+        weight: 8
+      },
+      {
+        condition: (n: number) => this.hasSimplePrimeFactors(n),
+        method: this.generatePrimeFactorsExpression.bind(this),
+        weight: 7
+      },
+      {
+        condition: (n: number) => n > 20 && n < 50,
+        method: this.generateRecursiveExpression.bind(this),
+        weight: 6
+      },
+      {
+        condition: () => true,
+        method: this.generateOperatorMixExpression.bind(this),
+        weight: 5
+      }
     ];
-    const selectedMethod = methods[Math.floor(Math.random() * methods.length)];
-    return selectedMethod(target, baseNumber);
+
+    // 筛选符合条件的策略
+    const validStrategies = strategies.filter(s => s.condition(target));
+
+    // 根据权重随机选择策略
+    const totalWeight = validStrategies.reduce((sum, s) => sum + s.weight, 0);
+    let random = Math.random() * totalWeight;
+
+    for (const strategy of validStrategies) {
+      random -= strategy.weight;
+      if (random <= 0) {
+        try {
+          const result = strategy.method(target, baseNumber);
+          // 验证生成的表达式是否正确
+          if (this.validateExpression(result, target)) {
+            return result;
+          }
+        } catch (e) {
+          // 如果当前策略失败，继续尝试下一个
+          continue;
+        }
+      }
+    }
+
+    // 如果所有策略都失败，使用最基础的表达式生成
+    return this.generateDecimalExpression(target, baseNumber);
+  }
+
+  /**
+   * 检查数字是否为2的幂
+   */
+  private isPowerOfTwo(n: number): boolean {
+    return n > 0 && (n & (n - 1)) === 0;
+  }
+
+  /**
+   * 检查数字是否具有简单的质因数分解
+   */
+  private hasSimplePrimeFactors(n: number): boolean {
+    if (n <= 1) return false;
+    let temp = n;
+    let factors = 0;
+
+    for (let i = 2; i <= Math.sqrt(n); i++) {
+      while (temp % i === 0) {
+        factors++;
+        temp /= i;
+        if (factors > 3) return false; // 超过3个因子就不算简单
+      }
+    }
+
+    if (temp > 1) factors++;
+    return factors <= 3;
+  }
+
+  /**
+   * 验证生成的表达式是否正确
+   */
+  private validateExpression(expr: string, target: number): boolean {
+    try {
+      // 1. 替换位运算符为等效的数学运算
+      const safeExpr = expr
+        .replace(/<<\s*(\d+)/g, '* Math.pow(2, $1)') // 左移转换为乘以2的幂
+        .replace(/>>\s*(\d+)/g, '/ Math.pow(2, $1)') // 右移转换为除以2的幂
+        .replace(/\^/g, '**');                        // 将^转换为标准的幂运算符
+
+      // 2. 使用Number.parseFloat确保结果为数值
+      const result = Number.parseFloat(eval(safeExpr));
+
+      // 3. 使用epsilon比较处理浮点数精度问题
+      const epsilon = 0.0001; // 允许的误差范围
+      return Math.abs(result - target) < epsilon;
+    } catch (e) {
+      this.ctx.logger.error(`Expression validation failed: ${e.message}`);
+      return false;
+    }
   }
 
   /**
@@ -231,16 +337,29 @@ export class JrrpIdentificationMode {
 
     const b = baseNumber;
     this.digitExpressions.set(b, String(b));
-    this.digitExpressions.set(0, `(${b} ^ ${b})`);           // 最简异或
-    this.digitExpressions.set(1, `(${b} / ${b})`);           // 最简除法
-    this.digitExpressions.set(2, `(${b} >> (${b} / ${b})`);  // 右移1位
-    this.digitExpressions.set(3, `(${b} / (${b} / ${b} << ${b} / ${b}))`); // 除以2
-    this.digitExpressions.set(4, `(${b} & (${b} | (${b} / ${b})))`);  // 位运算组合
-    this.digitExpressions.set(5, `(${b} - ${b} / ${b})`);    // 减1
-    this.digitExpressions.set(7, `(${b} + ${b} / ${b})`);    // 加1
-    this.digitExpressions.set(8, `(${b} + ${b} / ${b} << ${b} / ${b})`); // 加2
-    this.digitExpressions.set(9, `(${b} | (${b} >> ${b} / ${b}))`);  // 位运算
-    this.digitExpressions.set(10, `((${b} << ${b} / ${b}) + (${b} >> ${b} / ${b}))`); // 10的特殊处理
+
+    // 如果基础数字在1-9之间，对应数字直接使用基础数字本身
+    for (let i = 1; i <= 9; i++) {
+      if (i === b) continue; // 跳过基础数字本身，因为已经设置过了
+      if (i <= 9) {
+        this.digitExpressions.set(i, String(b === i ? b : i));
+      }
+    }
+
+    // 设置需要特殊处理的数字
+    this.digitExpressions.set(0, `(${b} ^ ${b})`);
+    this.digitExpressions.set(10, `((${b} << ${b} / ${b}) + (${b} >> ${b} / ${b}))`);
+
+    // 如果基础数字不是对应数字，则使用原来的表达式
+    if (b !== 1) this.digitExpressions.set(1, `(${b} / ${b})`);
+    if (b !== 2) this.digitExpressions.set(2, `(${b} >> (${b} / ${b})`);
+    if (b !== 3) this.digitExpressions.set(3, `(${b} / (${b} / ${b} << ${b} / ${b}))`);
+    if (b !== 4) this.digitExpressions.set(4, `(${b} & (${b} | (${b} / ${b})))`);
+    if (b !== 5) this.digitExpressions.set(5, `(${b} - ${b} / ${b})`);
+    if (b !== 6) this.digitExpressions.set(6, `(${b} + (${b} / ${b} >> ${b} / ${b}))`);
+    if (b !== 7) this.digitExpressions.set(7, `(${b} + ${b} / ${b})`);
+    if (b !== 8) this.digitExpressions.set(8, `(${b} + ${b} / ${b} << ${b} / ${b})`);
+    if (b !== 9) this.digitExpressions.set(9, `(${b} | (${b} >> ${b} / ${b}))`);
   }
 
   /**
@@ -329,7 +448,10 @@ export class JrrpIdentificationMode {
     // 尝试直接分解
     const factors = tryDecompose(target);
     if (factors) {
-      const factorExprs = factors.map(f => this.generateDecimalExpression(f, baseNumber));
+      // 将因子转换为表达式并随机打乱顺序
+      const factorExprs = factors
+        .map(f => this.generateDecimalExpression(f, baseNumber))
+        .sort(() => Math.random() - 0.5);  // 随机打乱数组顺序
       return `(${factorExprs.join(' * ')})`;
     }
 
@@ -349,50 +471,164 @@ export class JrrpIdentificationMode {
   }
 
   /**
-   * 使用位运算生成目标数值的表达式
+   * 使用二进制特性生成表达式
    * @param target - 目标数值
    * @param baseNumber - 基础数字
-   * @returns 返回一个基于位运算的数学表达式
    */
-  private generateBitOperationExpression(target: number, baseNumber: number): string {
-    if (target <= 10) return this.getDigitExpr(target, baseNumber);
+  private generateBinaryExpression(target: number, baseNumber: number): string {
+    if (target <= 10) return this.generateRandomFragment(target, baseNumber);
 
-    // 尝试使用位移和基本运算组合
-    const shifts = Math.floor(Math.log2(target));
-    const remainder = target - (1 << shifts);
+    const binary = target.toString(2);
+    const parts: string[] = [];
+    let currentValue = 0;
 
-    if (remainder === 0) {
-      return `(${baseNumber} << ${this.generateDecimalExpression(shifts, baseNumber)})`;
-    } else if (remainder > 0) {
-      return `((${baseNumber} << ${this.generateDecimalExpression(shifts, baseNumber)}) + ${this.generateDecimalExpression(remainder, baseNumber)})`;
+    for (let i = 0; i < binary.length; i++) {
+      if (binary[i] === '1') {
+        const value = 1 << (binary.length - i - 1);
+        currentValue += value;
+
+        // 随机选择是否合并相邻的1
+        if (parts.length > 0 && Math.random() < 0.3) {
+          const op = this.randomOperator();
+          const lastPart = parts.pop()!;
+          parts.push(`(${lastPart} ${op.op} ${this.generateRandomFragment(value, baseNumber)})`);
+        } else {
+          parts.push(this.generateRandomFragment(value, baseNumber));
+        }
+      }
     }
 
-    // 如果以上方法不适用，回退到十进制表达式
-    return this.generateDecimalExpression(target, baseNumber);
+    // 随机组合各部分
+    return parts.reduce((expr, part) => {
+      const op = this.randomOperator();
+      return `(${expr} ${op.op} ${part})`;
+    });
   }
 
   /**
-   * 使用平方根相关运算生成目标数值的表达式
+   * 使用递归方式生成表达式
    * @param target - 目标数值
    * @param baseNumber - 基础数字
-   * @returns 返回一个基于平方根运算的数学表达式
    */
-  private generateSqrtExpression(target: number, baseNumber: number): string {
-    const sqrt = Math.floor(Math.sqrt(target));
-    const remainder = target - sqrt * sqrt;
+  private generateRecursiveExpression(target: number, baseNumber: number): string {
+    if (target <= 10) return this.generateRandomFragment(target, baseNumber);
 
-    if (remainder === 0) {
-      const innerExpr = this.generateDecimalExpression(sqrt, baseNumber);
-      return `(${innerExpr} * ${innerExpr})`;
+    // 增加随机分解策略
+    const strategies = [
+      // 平方分解
+      () => {
+        const sqrt = Math.floor(Math.sqrt(target));
+        if (sqrt * sqrt === target) {
+          const inner = this.generateRandomFragment(sqrt, baseNumber);
+          return `(${inner} * ${inner})`;
+        }
+        return null;
+      },
+      // 因子分解
+      () => {
+        for (let i = Math.floor(Math.sqrt(target)); i >= 2; i--) {
+          if (target % i === 0) {
+            const op = this.randomOperator();
+            const part1 = this.generateRandomFragment(i, baseNumber);
+            const part2 = this.generateRandomFragment(target / i, baseNumber);
+            return `(${part1} ${op.op} ${part2})`;
+          }
+        }
+        return null;
+      },
+      // 位运算分解
+      () => {
+        if (target > 16) {
+          const shift = Math.floor(Math.log2(target));
+          const base = 1 << shift;
+          const remainder = target - base;
+          if (remainder > 0) {
+            const baseExpr = this.generateRandomFragment(base, baseNumber);
+            const remainderExpr = this.generateRandomFragment(remainder, baseNumber);
+            const op = this.randomOperator();
+            return `(${baseExpr} ${op.op} ${remainderExpr})`;
+          }
+        }
+        return null;
+      }
+    ];
+
+    // 随机尝试不同策略
+    for (const strategy of strategies.sort(() => Math.random() - 0.5)) {
+      const result = strategy();
+      if (result) return result;
     }
 
-    if (remainder > 0 && remainder <= 10) {
-      const sqrtExpr = this.generateDecimalExpression(sqrt, baseNumber);
-      const remExpr = this.getDigitExpr(remainder, baseNumber);
-      return `((${sqrtExpr} * ${sqrtExpr}) + ${remExpr})`;
+    return this.generateOperatorMixExpression(target, baseNumber);
+  }
+
+  /**
+   * 使用混合运算符生成表达式
+   * @param target - 目标数值
+   * @param baseNumber - 基础数字
+   */
+  private generateOperatorMixExpression(target: number, baseNumber: number): string {
+    if (target <= 10) return this.generateRandomFragment(target, baseNumber);
+
+    // 尝试生成复杂表达式
+    const attempts = [
+      // 双操作符组合
+      () => {
+        const op1 = this.randomOperator();
+        const op2 = this.randomOperator();
+        for (let i = 2; i <= Math.min(target, 20); i++) {
+          const combined = op1.calc(op2.calc(i, baseNumber), baseNumber);
+          if (combined === target) {
+            return `((${this.generateRandomFragment(i, baseNumber)} ${op2.op} ${baseNumber}) ${op1.op} ${baseNumber})`;
+          }
+        }
+        return null;
+      },
+      // 三元复合表达式
+      () => {
+        const ops = Array(3).fill(0).map(() => this.randomOperator());
+        const values = Array(3).fill(0).map(() => Math.floor(Math.random() * 10) + 1);
+        const expr = `((${values[0]} ${ops[0].op} ${values[1]}) ${ops[1].op} (${values[2]} ${ops[2].op} ${baseNumber}))`;
+        return eval(expr) === target ? expr : null;
+      }
+    ];
+
+    // 随机尝试不同生成方式
+    for (const attempt of attempts) {
+      const result = attempt();
+      if (result) return result;
     }
 
-    return this.generateDecimalExpression(target, baseNumber);
+    // 降级为基础表达式
+    return this.generateRandomFragment(target, baseNumber);
+  }
+
+  /**
+   * 随机选择运算符
+   */
+  private randomOperator() {
+    const totalWeight = this.operators.reduce((sum, op) => sum + op.weight, 0);
+    let random = Math.random() * totalWeight;
+
+    for (const op of this.operators) {
+      random -= op.weight;
+      if (random <= 0) return op;
+    }
+    return this.operators[0];
+  }
+
+  /**
+   * 生成随机表达式片段
+   */
+  private generateRandomFragment(n: number, baseNumber: number): string {
+    const methods = [
+      () => this.getDigitExpr(n, baseNumber),
+      () => `(${this.getDigitExpr(baseNumber, baseNumber)} << ${n})`,
+      () => `(${this.getDigitExpr(n, baseNumber)} | ${baseNumber})`,
+      () => `(${this.getDigitExpr(n, baseNumber)} & ${baseNumber})`,
+      () => `(${this.getDigitExpr(n, baseNumber)} ^ ${baseNumber})`
+    ];
+    return methods[Math.floor(Math.random() * methods.length)]();
   }
 
   /**
