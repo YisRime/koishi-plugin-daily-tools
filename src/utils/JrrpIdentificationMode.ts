@@ -340,52 +340,89 @@ export class JrrpIdentificationMode {
   }
 
   /**
-   * 使用最简方式生成表达式，仅使用基础数字
+   * 使用混合运算生成目标数值的表达式
    * @param target - 目标数值
    * @param baseNumber - 基础数字
-   * @returns 返回一个简洁的数学表达式
+   * @returns 返回一个包含多种运算的数学表达式
    */
-  private generateMinimalExpression(target: number, baseNumber: number): string {
-    // 处理特殊情况
-    if (target === baseNumber) return this.getDigitExpr(target, baseNumber);
-    if (target === 0) return `(${this.getDigitExpr(baseNumber, baseNumber)} - ${this.getDigitExpr(baseNumber, baseNumber)})`;
-    if (target === 1) return `(${this.getDigitExpr(baseNumber, baseNumber)} / ${this.getDigitExpr(baseNumber, baseNumber)})`;
+  private generateMixedOperationsExpression(target: number, baseNumber: number): string {
+    if (target <= 10) return this.getDigitExpr(target, baseNumber);
 
-    // 计算最接近的幂
-    const power = Math.floor(Math.log(target) / Math.log(baseNumber));
-    const powerResult = Math.pow(baseNumber, power);
+    const cached = this.digitExpressions.get(target);
+    if (cached) return cached;
 
-    let expr = power === 1 ? this.getDigitExpr(baseNumber, baseNumber) : `(${this.getDigitExpr(baseNumber, baseNumber)}`;
-    for (let i = 1; i < power; i++) {
-      expr += ` * ${this.getDigitExpr(baseNumber, baseNumber)}`;
-    }
-    expr += power > 1 ? ')' : '';
+    const b = this.getDigitExpr(baseNumber, baseNumber);
+    let expr = '';
 
-    const diff = target - powerResult;
-    if (diff === 0) return expr;
-
-    // 使用getDigitExpr处理差值
-    const diffAbs = Math.abs(diff);
-    let diffExpr: string;
-
-    if (diffAbs <= baseNumber) {
-      diffExpr = this.getDigitExpr(diffAbs, baseNumber);
+    if (target === 0) {
+      expr = `(${b} - ${b})`;
+    } else if (target === 100) {
+      expr = `(${b} * ${this.generateMixedOperationsExpression(Math.floor(100/baseNumber), baseNumber)})`;
     } else {
-      const nextPower = Math.floor(Math.log(diffAbs) / Math.log(baseNumber));
-      const nextValue = Math.pow(baseNumber, nextPower);
-      if (nextValue === diffAbs) {
-        diffExpr = this.generateMinimalExpression(diffAbs, baseNumber);
-      } else {
-        const remain = diffAbs - nextValue;
-        if (remain > 0) {
-          diffExpr = `(${this.generateMinimalExpression(nextValue, baseNumber)} + ${this.getDigitExpr(remain, baseNumber)})`;
-        } else {
-          diffExpr = `(${this.generateMinimalExpression(nextValue, baseNumber)} - ${this.getDigitExpr(-remain, baseNumber)})`;
+      const strategies = [
+        // 加减法策略 - 保持不变
+        () => {
+          const base = Math.floor(target / 10) * 10;
+          const diff = target - base;
+          return diff >= 0
+            ? `(${this.generateMixedOperationsExpression(base, baseNumber)} + ${this.getDigitExpr(diff, baseNumber)})`
+            : `(${this.generateMixedOperationsExpression(base, baseNumber)} - ${this.getDigitExpr(-diff, baseNumber)})`;
+        },
+        // 改进的乘除法策略
+        () => {
+          // 找到最接近的能被基数整除的数
+          const quotient = Math.floor(target / baseNumber);
+          const remainder = target % baseNumber;
+
+          if (remainder === 0) {
+            // 能整除的情况
+            return `(${b} * ${this.generateMixedOperationsExpression(quotient, baseNumber)})`;
+          } else if (remainder <= baseNumber / 2) {
+            // 余数较小时，使用加法
+            return `((${b} * ${this.generateMixedOperationsExpression(quotient, baseNumber)}) + ${this.getDigitExpr(remainder, baseNumber)})`;
+          } else {
+            // 余数较大时，使用减法（向上取整）
+            return `((${b} * ${this.generateMixedOperationsExpression(quotient + 1, baseNumber)}) - ${this.getDigitExpr(baseNumber - remainder, baseNumber)})`;
+          }
+        },
+        // 改进的位运算策略，处理余数
+        () => {
+          const maxShift = Math.floor(Math.log2(target));
+          const base = 1 << maxShift;
+          const remainder = target - base;
+
+          if (remainder === 0) {
+            return `(${b} << ${this.getDigitExpr(maxShift, baseNumber)})`;
+          } else if (remainder < 0) {
+            // 如果目标值小于2的幂，使用减法
+            return `((${b} << ${this.getDigitExpr(maxShift, baseNumber)}) - ${this.generateMixedOperationsExpression(-remainder, baseNumber)})`;
+          } else {
+            // 如果有余数，递归处理余数部分
+            return `((${b} << ${this.getDigitExpr(maxShift, baseNumber)}) + ${this.generateMixedOperationsExpression(remainder, baseNumber)})`;
+          }
+        },
+        // 新增：递归分解策略
+        () => {
+          // 尝试找到最接近的可以简单表示的数
+          for (let i = 1; i <= Math.min(10, target); i++) {
+            if (target % i === 0) {
+              const quotient = target / i;
+              if (quotient <= 10) {
+                return `(${this.getDigitExpr(i, baseNumber)} * ${this.getDigitExpr(quotient, baseNumber)})`;
+              }
+            }
+          }
+          // 如果找不到合适的因子，使用加减法
+          const mid = Math.floor(target / 2);
+          return `(${this.generateMixedOperationsExpression(mid, baseNumber)} + ${this.generateMixedOperationsExpression(target - mid, baseNumber)})`;
         }
-      }
+      ];
+
+      expr = strategies[Math.floor(Math.random() * strategies.length)]();
     }
 
-    return `(${expr} ${diff > 0 ? '+' : '-'} ${diffExpr})`;
+    this.digitExpressions.set(target, expr);
+    return expr;
   }
 
   /**
@@ -414,7 +451,7 @@ export class JrrpIdentificationMode {
           } else if (rand < 0.66) {
             return this.generatePrimeFactorsExpression(score, baseNumber);
           } else {
-            return this.generateMinimalExpression(score, baseNumber);
+            return this.generateMixedOperationsExpression(score, baseNumber);
           }
         default:
           return score.toString();
