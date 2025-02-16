@@ -620,7 +620,7 @@ export async function apply(ctx: Context, config: Config) {
       // 处理查找特定分数的日期
       if (options?.g !== undefined && options.g !== null) {
         // 验证分数范围和处理逻辑保持不变...
-        if (!Number.isInteger(options.g) || options.g < 0 || options.g > 100) {
+        if (options.g < 0 || options.g > 100) {
           const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
           await utils.autoRecall(session, message);
           return;
@@ -645,41 +645,25 @@ export async function apply(ctx: Context, config: Config) {
 
       // 计算运势
       try {
-        // 格式化日期字符串
-        const year = dateForCalculation.getFullYear();
-        const monthStr = String(dateForCalculation.getMonth() + 1).padStart(2, '0');
-        const dayStr = String(dateForCalculation.getDate()).padStart(2, '0');
-        const formattedDateTime = `${year}-${monthStr}-${dayStr}`;
-        const monthDay = `${monthStr}-${dayStr}`;
+        const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`;
 
         // 处理节日特殊消息
-        if (config.holidayMessages?.[monthDay]) {
-          const holidayMessage = session.text(config.holidayMessages[monthDay]);
-          const holidayPromptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'));
-          await utils.autoRecall(session, holidayPromptMessage);
-          const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
-          if (!response) {
-            await session.send(session.text('commands.jrrp.messages.cancel'));
-            return;
-          }
+        if (!await utils.handleHolidayMessage(session, monthDay, config.holidayMessages)) {
+          return;
         }
 
-        const userNickname = session.username || 'User'
+        const userNickname = session.username || 'User';
+        const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
         const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
-        const userDateSeed = `${session.userId}-${formattedDateTime}` // 将这行上移到这里作为唯一声明
-        let userFortune: number
 
-        // 1. 尝试获取缓存的分数
-        const cachedScore = utils.getCachedScore(userDateSeed);
-        if (cachedScore !== null) {
-          userFortune = cachedScore;
-        } else {
-          // 如果没有缓存，计算并缓存分数
+        // 获取或计算分数
+        let userFortune = utils.getCachedScore(userDateSeed);
+        if (userFortune === null) {
           userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
           utils.setCachedScore(userDateSeed, userFortune);
         }
 
-        // 2. 处理特殊码零分确认
+        // 处理特殊码零分确认
         if (identificationCode && userFortune === 0) {
           await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
@@ -690,65 +674,35 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 3. 检查是否显示愚人模式结果
-        let formattedFortune: string;
-
-        // 检查是否启用愚人模式
-        let isUsingFoolMode = config.fool.type === FoolMode.ENABLED && (
-          !config.fool.date ||
-          (() => {
-            const [targetMonth, targetDay] = config.fool.date.split('-').map(Number);
-            const currentMonth = dateForCalculation.getMonth() + 1;
-            const currentDay = dateForCalculation.getDate();
-            return currentMonth === targetMonth && currentDay === targetDay;
-          })()
-        );
-
-        // 根据模式选择不同的缓存和显示逻辑
-        if (isUsingFoolMode) {
-          // 直接使用 formatScore，它会处理缓存逻辑
-          formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
-        } else {
-          formattedFortune = userFortune.toString();
-        }
-
+        // 格式化分数显示
+        const formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
         let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);
 
-        // 5. 添加额外消息提示
-        // 注意：使用原始分数判断特殊消息和范围消息，而不是格式化后的结果
-
-        // 处理特殊分数消息
-        if (identificationCode) {
-          if (userFortune === 100 && jrrpIdentification.isFirst100(session.userId)) {
-            await jrrpIdentification.markFirst100(session.userId);
-            fortuneResultText += session.text(config.specialMessages[userFortune]) +
-                          '\n' + session.text('commands.jrrp.messages.special_mode.first_100');
-          } else if (config.specialMessages && userFortune in config.specialMessages) {
-            fortuneResultText += session.text(config.specialMessages[userFortune]);
-          }
-        } else if (config.specialMessages && userFortune in config.specialMessages) {
+        // 添加额外消息提示
+        if (identificationCode && userFortune === 100 && jrrpIdentification.isFirst100(session.userId)) {
+          await jrrpIdentification.markFirst100(session.userId);
+          fortuneResultText += session.text(config.specialMessages[userFortune]) +
+                        '\n' + session.text('commands.jrrp.messages.special_mode.first_100');
+        } else if (config.specialMessages?.[userFortune]) {
           fortuneResultText += session.text(config.specialMessages[userFortune]);
-        }
-
-        // 处理分数范围消息
-        if (!config.specialMessages?.[userFortune] && config.rangeMessages) {
-          for (const [range, rangeMessage] of Object.entries(config.rangeMessages)) {
+        } else if (config.rangeMessages) {
+          for (const [range, message] of Object.entries(config.rangeMessages)) {
             const [min, max] = range.split('-').map(Number);
-            if (!isNaN(min) && !isNaN(max) && userFortune >= min && userFortune <= max) {
-              fortuneResultText += session.text(rangeMessage);
+            if (userFortune >= min && userFortune <= max) {
+              fortuneResultText += session.text(message);
               break;
             }
           }
         }
 
-        // 发送结果
         await session.send(fortuneResultText);
         return;
+
       } catch (error) {
         console.error('Daily fortune calculation failed:', error);
-        const message = await session.send(session.text('commands.jrrp.messages.error', []));
+        const message = await session.send(session.text('commands.jrrp.messages.error'));
         await utils.autoRecall(session, message);
         return;
       }
-    })
+    });
 }

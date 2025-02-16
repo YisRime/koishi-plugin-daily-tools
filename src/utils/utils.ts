@@ -12,10 +12,6 @@ export const CONSTANTS = {
     MEMBER_LIST: (platform: string, guildId: string) => `members:${platform}:${guildId}`,
     JRRP: {
       SCORE: (seed: string) => `jrrp:score:${seed}`,
-      FOOL: {
-        BINARY: (score: number) => `jrrp:fool:binary:${score}`,
-        EXPRESSION: (score: number) => `jrrp:fool:expression:${score}`,
-      }
     }
   },
   TIMEOUTS: {
@@ -62,7 +58,6 @@ interface CacheEntry<T> {
 export const cacheStore = {
   memberList: new Map<string, CacheEntry<string[]>>(),
   jrrpScore: new Map<string, CacheEntry<number>>(),
-  jrrpFool: new Map<string, CacheEntry<string | string[]>>()
 };
 
 /**
@@ -293,35 +288,6 @@ export function parseTarget(input: string): string | null {
   if (!input?.trim()) return null;
   const parsedUser = h.parse(input)[0];
   return parsedUser?.type === 'at' ? parsedUser.attrs.id : input.trim();
-}
-
-/**
- * 获取缓存的二进制表达式
- */
-export function getCachedBinaryExpression(score: number): string | null {
-  return getCached(CONSTANTS.CACHE_KEYS.JRRP.FOOL.BINARY(score), cacheStore.jrrpFool) as string | null;
-}
-
-/**
- * 设置二进制表达式缓存
- */
-export function setCachedBinaryExpression(score: number, expression: string): void {
-  setCached(CONSTANTS.CACHE_KEYS.JRRP.FOOL.BINARY(score), expression, cacheStore.jrrpFool);
-}
-
-/**
- * 获取缓存的数学表达式
- */
-export function getCachedMathExpression(score: number): string[] | null {
-  const result = getCached(CONSTANTS.CACHE_KEYS.JRRP.FOOL.EXPRESSION(score), cacheStore.jrrpFool);
-  return Array.isArray(result) ? result : null;
-}
-
-/**
- * 设置数学表达式缓存
- */
-export function setCachedMathExpression(score: number, expressions: string[]): void {
-  setCached(CONSTANTS.CACHE_KEYS.JRRP.FOOL.EXPRESSION(score), expressions, cacheStore.jrrpFool);
 }
 
 /**
