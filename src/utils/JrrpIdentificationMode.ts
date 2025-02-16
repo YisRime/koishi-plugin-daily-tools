@@ -657,7 +657,7 @@ export class JrrpIdentificationMode {
       }
     }
 
-    // 只在愚人模式下使用缓存
+    // 获取缓存的表达式,没有则生成新的
     const cacheKey = `fool:${score}:${foolConfig.displayMode}:${foolConfig.baseNumber || ''}`;
     let expressions = utils.getCachedFoolExpressions(cacheKey);
 
@@ -677,6 +677,7 @@ export class JrrpIdentificationMode {
       utils.setCachedFoolExpressions(cacheKey, expressions);
     }
 
+    // 返回随机选择的表达式
     return expressions[Math.floor(Math.random() * expressions.length)];
   }
 }

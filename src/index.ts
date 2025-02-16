@@ -688,8 +688,11 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 格式化分数显示
-        const formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
+        // 直接使用分数的字符串形式,而不是调用 formatScore
+        const formattedFortune = config.fool.type === FoolMode.ENABLED
+          ? jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool)
+          : userFortune.toString();
+
         let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);
 
         // 处理特殊分数消息
