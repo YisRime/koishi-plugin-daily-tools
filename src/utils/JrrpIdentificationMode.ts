@@ -2,6 +2,8 @@ import { Context } from 'koishi'
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import { DisplayMode, FoolConfig, FoolMode } from '..';
+import { CONSTANTS } from './utils';
+import * as utils from './utils';
 
 /**
  * JRRP识别码模式处理类
@@ -639,31 +641,42 @@ export class JrrpIdentificationMode {
    * @returns 根据配置格式化后的分数字符串
    */
   public formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
+    // 非愚人模式直接返回普通字符串
     if (foolConfig.type !== FoolMode.ENABLED) {
       return score.toString();
     }
 
-    // 如果 date 为空字符串，则始终启用
+    // 检查日期匹配
     if (foolConfig.date) {
       const [targetMonth, targetDay] = foolConfig.date.split('-').map(Number);
       const currentMonth = date.getMonth() + 1;
       const currentDay = date.getDate();
 
-      // 日期不匹配则返回原始分数
       if (currentMonth !== targetMonth || currentDay !== targetDay) {
         return score.toString();
       }
     }
 
-    // 根据显示模式处理分数
-    switch (foolConfig.displayMode) {
-      case DisplayMode.BINARY:
-        return score.toString(2);
-      case DisplayMode.EXPRESSION:
-        const base = foolConfig.baseNumber ?? 6;
-        return this.generateExpression(score, base);
-      default:
-        return score.toString();
+    // 只在愚人模式下使用缓存
+    const cacheKey = `fool:${score}:${foolConfig.displayMode}:${foolConfig.baseNumber || ''}`;
+    let expressions = utils.getCachedFoolExpressions(cacheKey);
+
+    if (!expressions) {
+      expressions = Array.from({ length: CONSTANTS.LIMITS.FOOL_CACHE_SIZE }, () => {
+        switch (foolConfig.displayMode) {
+          case DisplayMode.BINARY:
+            return score.toString(2);
+          case DisplayMode.EXPRESSION:
+            const base = foolConfig.baseNumber ?? 6;
+            return this.generateExpression(score, base);
+          default:
+            return score.toString();
+        }
+      });
+
+      utils.setCachedFoolExpressions(cacheKey, expressions);
     }
+
+    return expressions[Math.floor(Math.random() * expressions.length)];
   }
 }

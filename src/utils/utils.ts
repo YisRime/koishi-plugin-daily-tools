@@ -20,6 +20,7 @@ export const CONSTANTS = {
   LIMITS: {
     MAX_DAYS_TO_CHECK: 365,
     MAX_CACHE_SIZE: 1000,
+    FOOL_CACHE_SIZE: 5, // 愚人模式缓存的结果数量
   }
 };
 
@@ -32,6 +33,7 @@ export const CONSTANTS = {
 export const cacheConfig = {
   memberListExpiry: 3600000,
   scoreExpiry: 86400000,
+  foolExpiry: 86400000, // 愚人模式缓存24小时过期
 };
 
 /**
@@ -43,6 +45,7 @@ export const cacheConfig = {
 export const cacheStore = {
   memberListCache: new Map<string, { members: string[], expiry: number }>(),
   scoreCache: new Map<string, { score: number, expiry: number }>(),
+  foolCache: new Map<string, { expressions: string[], expiry: number }>(),
 };
 
 /**
@@ -315,4 +318,31 @@ export function parseTarget(input: string): string | null {
   if (!input?.trim()) return null;
   const parsedUser = h.parse(input)[0];
   return parsedUser?.type === 'at' ? parsedUser.attrs.id : input.trim();
+}
+
+/**
+ * 获取缓存的愚人模式表达式
+ * @param {string} key - 缓存键
+ * @returns {string[]|null} 缓存的表达式数组，不存在或过期则返回null
+ */
+export function getCachedFoolExpressions(key: string): string[] | null {
+  if (!key.startsWith('fool:')) return null; // 只处理愚人模式的缓存
+  const cached = cacheStore.foolCache.get(key);
+  if (cached && cached.expiry > Date.now()) {
+    return cached.expressions;
+  }
+  return null;
+}
+
+/**
+ * 设置愚人模式表达式缓存
+ * @param {string} key - 缓存键
+ * @param {string[]} expressions - 要缓存的表达式数组
+ */
+export function setCachedFoolExpressions(key: string, expressions: string[]): void {
+  if (!key.startsWith('fool:')) return; // 只处理愚人模式的缓存
+  cacheStore.foolCache.set(key, {
+    expressions,
+    expiry: Date.now() + cacheConfig.foolExpiry
+  });
 }
