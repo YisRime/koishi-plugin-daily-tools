@@ -641,43 +641,29 @@ export class JrrpIdentificationMode {
    * @returns 根据配置格式化后的分数字符串
    */
   public formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
-    // 非愚人模式直接返回普通字符串
-    if (foolConfig.type !== FoolMode.ENABLED) {
-      return score.toString();
-    }
-
-    // 检查日期匹配
-    if (foolConfig.date) {
-      const [targetMonth, targetDay] = foolConfig.date.split('-').map(Number);
-      const currentMonth = date.getMonth() + 1;
-      const currentDay = date.getDate();
-
-      if (currentMonth !== targetMonth || currentDay !== targetDay) {
-        return score.toString();
-      }
-    }
-
-    // 获取缓存的表达式,没有则生成新的
+    // 生成缓存键,包含分数、显示模式和基数
     const cacheKey = `fool:${score}:${foolConfig.displayMode}:${foolConfig.baseNumber || ''}`;
     let expressions = utils.getCachedFoolExpressions(cacheKey);
 
     if (!expressions) {
+      // 如果没有缓存,预先生成 FOOL_CACHE_SIZE 个不同表达式
       expressions = Array.from({ length: CONSTANTS.LIMITS.FOOL_CACHE_SIZE }, () => {
         switch (foolConfig.displayMode) {
           case DisplayMode.BINARY:
-            return score.toString(2);
+            return score.toString(2);  // 二进制模式固定只有一种表示
           case DisplayMode.EXPRESSION:
             const base = foolConfig.baseNumber ?? 6;
-            return this.generateExpression(score, base);
+            return this.generateExpression(score, base); // 每次生成不同的数学表达式
           default:
             return score.toString();
         }
       });
 
+      // 缓存生成的表达式数组
       utils.setCachedFoolExpressions(cacheKey, expressions);
     }
 
-    // 返回随机选择的表达式
+    // 从缓存的表达式中随机选择一个返回
     return expressions[Math.floor(Math.random() * expressions.length)];
   }
 }

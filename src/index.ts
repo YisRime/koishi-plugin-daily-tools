@@ -674,10 +674,11 @@ export async function apply(ctx: Context, config: Config) {
         let userFortune: number
         const userDateSeed = `${session.userId}-${formattedDateTime}`
 
+        // 1. 首先计算原始分数
         const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
         userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
 
-        // 处理特殊码零分确认
+        // 2. 处理特殊码零分确认
         if (identificationCode && userFortune === 0) {
           await session.send(session.text('commands.jrrp.messages.special_mode.zero_prompt'));
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
@@ -688,12 +689,29 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        // 直接使用分数的字符串形式,而不是调用 formatScore
-        const formattedFortune = config.fool.type === FoolMode.ENABLED
+        // 3. 检查是否显示愚人模式结果
+        let formattedFortune: string;
+        let isUsingFoolMode = false;
+
+        if (config.fool.type === FoolMode.ENABLED) {
+          const [targetMonth, targetDay] = config.fool.date?.split('-').map(Number) || [];
+          const currentMonth = dateForCalculation.getMonth() + 1;
+          const currentDay = dateForCalculation.getDate();
+
+          if ((!config.fool.date || (currentMonth === targetMonth && currentDay === targetDay))) {
+            isUsingFoolMode = true;
+          }
+        }
+
+        // 4. 根据模式选择显示方式
+        formattedFortune = isUsingFoolMode
           ? jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool)
           : userFortune.toString();
 
         let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);
+
+        // 5. 添加额外消息提示
+        // 注意：使用原始分数判断特殊消息和范围消息，而不是格式化后的结果
 
         // 处理特殊分数消息
         if (identificationCode) {
