@@ -374,14 +374,15 @@ export async function apply(ctx: Context, config: Config) {
     .option('z', '-z')
     .option('l', '-l')
     .action(async ({ session, options }) => {
+      let responseText: string;
+
       // 列表查看功能
       if (options?.l) {
         const targets = zanwoManager.getList();
-        if (!targets.length) {
-          return session.text('commands.zanwo.messages.no_targets');
-        }
-
-        return session.text('commands.zanwo.messages.list', [targets.join(', ')]);
+        responseText = targets.length
+          ? session.text('commands.zanwo.messages.list', [targets.join(', ')])
+          : session.text('commands.zanwo.messages.no_targets');
+        return session.send(responseText);
       }
 
       // 列表管理操作
@@ -400,9 +401,8 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         const success = await zanwoManager[operation === 'add' ? 'addQQ' : 'removeQQ'](target);
-        return session.send(
-          session.text(`commands.zanwo.messages.${operation}_${success ? 'success' : 'failed'}`, [target])
-        );
+        responseText = session.text(`commands.zanwo.messages.${operation}_${success ? 'success' : 'failed'}`, [target]);
+        return session.send(responseText);
       }
 
       // 批量点赞
@@ -569,52 +569,48 @@ export async function apply(ctx: Context, config: Config) {
     .action(async ({ session, options }) => {
       // 处理识别码绑定
       if (options?.b !== undefined) {
-          try {
-            // 尝试删除原始命令消息
-            if (session.messageId) {
-              await utils.autoRecall(session, session.messageId, 500);
-            }
+        try {
+          // 优化消息处理逻辑，避免多次发送
+          let responseText: string;
 
-            // 处理解绑
-            if (!options.b) {
-              await jrrpIdentification.removeIdentificationCode(session.userId);
-              const message = await session.send(session.text('commands.jrrp.messages.identification_mode.unbind_success'));
-              await utils.autoRecall(session, message);
-              return;
-            }
+          // 尝试删除原始命令消息
+          if (session.messageId) {
+            await utils.autoRecall(session, session.messageId, 500);
+          }
 
-            // 处理绑定
+          if (!options.b) {
+            await jrrpIdentification.removeIdentificationCode(session.userId);
+            responseText = session.text('commands.jrrp.messages.identification_mode.unbind_success');
+          } else {
             const code = options.b.trim().toUpperCase();
 
-            // 格式验证
             if (!code || !jrrpIdentification.validateIdentificationCode(code)) {
-              const message = await session.send(session.text('commands.jrrp.messages.identification_mode.invalid_code'));
-              await utils.autoRecall(session, message);
-              return;
+              responseText = session.text('commands.jrrp.messages.identification_mode.invalid_code');
+            } else {
+              const existingCode = await jrrpIdentification.getIdentificationCode(session.userId);
+
+              if (existingCode === code) {
+                responseText = session.text('commands.jrrp.messages.identification_mode.already_bound');
+              } else {
+                await jrrpIdentification.bindIdentificationCode(session.userId, code);
+                responseText = session.text(
+                  existingCode
+                    ? 'commands.jrrp.messages.identification_mode.rebind_success'
+                    : 'commands.jrrp.messages.identification_mode.bind_success'
+                );
+              }
             }
-
-            const existingCode = await jrrpIdentification.getIdentificationCode(session.userId);
-
-            // 检查重复绑定
-            if (existingCode === code) {
-              const message = await session.send(session.text('commands.jrrp.messages.identification_mode.already_bound'));
-              await utils.autoRecall(session, message);
-              return;
-            }
-
-            // 执行绑定
-            await jrrpIdentification.bindIdentificationCode(session.userId, code);
-            const message = await session.send(session.text(
-              existingCode ? 'commands.jrrp.messages.identification_mode.rebind_success' : 'commands.jrrp.messages.identification_mode.bind_success'
-            ));
-            await utils.autoRecall(session, message);
-            return;
-          } catch (error) {
-            console.error('Failed to handle identification code:', error);
-            const message = await session.send(session.text('commands.jrrp.messages.error'));
-            await utils.autoRecall(session, message);
-            return;
           }
+
+          const message = await session.send(responseText);
+          await utils.autoRecall(session, message);
+          return;
+        } catch (error) {
+          console.error('Failed to handle identification code:', error);
+          const message = await session.send(session.text('commands.jrrp.messages.error'));
+          await utils.autoRecall(session, message);
+          return;
+        }
       }
 
       // 处理查找特定分数的日期
