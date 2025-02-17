@@ -1,8 +1,8 @@
 config_autolike:
-  $desc: "Auto-like Configuration"
+  $desc: "Like Configuration"
   adminAccount: "Admin Account"
   enableNotify: "Enable notification when like is successful"
-  adminOnly: "Only admin can configure auto-like list"
+  adminOnly: "Only admins can configure auto-like list"
 
 config_mute:
   $desc: "Mute Configuration"
@@ -14,7 +14,7 @@ config_mute:
         - "Until Time"
         - "Random Duration"
     duration: "Fixed mute duration (hours)"
-    until: "Mute until (HH:MM)"
+    until: "Mute until time (HH:MM)"
     min: "Minimum mute duration (hours)"
     max: "Maximum mute duration (hours)"
   mute:
@@ -39,10 +39,10 @@ config_jrrp:
       - "Modulo Algorithm"
       - "Normal Distribution Algorithm"
       - "Linear Congruential Algorithm"
-  identificationCode: "Verification key for identification code - used to calculate JRRP"
+  identificationCode: "Identification code verification key - used for JRRP calculation"
   fool:
     type:
-      $desc: "April Fools Mode"
+      $desc: "Fool Mode"
       $inner:
         - "Off"
         - "On"
@@ -60,7 +60,7 @@ config_range:
     $desc: "Ranges (max 10, modify text in localization)"
     $inner: "Set prompts for different ranges"
   specialMessages:
-    $desc: "Special Values (max 10, modify text in localization)"
+    $desc: "Special values (max 10, modify text in localization)"
     $inner: "Set prompts for special values"
   holidayMessages:
     $desc: "Dates (max 10, modify text in localization)"
@@ -68,10 +68,10 @@ config_range:
 
 commands:
   sleep:
-    description: "Quality sleep, mute for specified duration"
+    description: "Sleep mode, mute for specified duration"
     usage: |-
-      Auto mute for specified duration
-      Supports three modes: Fixed Duration, Until Time, Random Duration
+      Automatically mute for specified duration
+      Supports three modes: Fixed duration, Until time, Random duration
     messages:
       success: "Good night, sweet dreams"
       failed: "Failed, please check if bot has permissions"
@@ -81,10 +81,10 @@ commands:
   zanwo:
     description: "Auto-like, can like others"
     usage: |-
-      Send command to get bot likes, limit 50 likes
-      -u @user Like specified user
+      Send command to receive likes from bot, limit 50 likes
+      -u @user Like specific user
       -a/r @user Add/Remove user from like list
-      -z Like all users in like list
+      -z Like all users in the list
     messages:
       list: "Current like list: {0}"
       add_success: "Added {0} to like list"
@@ -94,7 +94,7 @@ commands:
       no_targets: "Like list is empty"
       batch_success: "Batch like completed!"
       batch_failed: "Batch like failed!"
-      success: "Like completed, remember to like back{0}~"
+      success: "Like completed, remember to like back {0}!"
       like_failed: "Like failed"
       target_not_found: "User not found"
       permission_denied: "Admin only"
@@ -114,11 +114,11 @@ commands:
         duration_too_long: "Mute duration ({0} minutes) exceeds limit"
       notify:
         self_muted: "You have been muted for {0} minutes {1} seconds"
-        target_muted: "Muted {0} for {1} minutes {2} seconds"
-        others_disabled: "Muting others feature is disabled"
+        target_muted: "{0} has been muted for {1} minutes {2} seconds"
+        others_disabled: "Muting others is disabled"
 
   jrrp:
-    description: "Daily Luck, calculate today's fortune"
+    description: "Daily luck, calculate today's fortune"
     usage: |-
       Check daily luck, supports:
       -d [date] Check luck for specific date
@@ -130,19 +130,19 @@ commands:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
       result: "{1} Your luck score today is: {0}"
-      prompt: "Would you like to check your luck today?"
+      prompt: "Would you like to see your luck today?"
       cancel: "Alright, have a nice day!"
       error: "Error calculating daily luck"
       found_date: "Your next {0} points will appear on {1}"
       not_found: "You won't get {0} points in the next year"
       invalid_number: "Please enter an integer between 0-100"
       range:
-        1: "...(It's percentile)"
+        1: "...(It's percentage based)"
         2: "?! No way..."
         3: "! Ugh..."
         4: "! Barely acceptable...?"
         5: "! Not bad, not bad."
-        6: "! Good luck today!"
+        6: "! Lucky day today!"
         7: "! Excellent!"
         8: "! Almost 100..."
         9: "Spare"
@@ -170,13 +170,12 @@ commands:
         9: "Spare"
         10: "Spare"
       identification_mode:
-        need_bind: "Please bind your identification code first"
         invalid_code: "Invalid identification code format! Please use XXXX-XXXX-XXXX-XXXX format"
-        bind_success: "Identification code bound successfully!"
-        unbind_success: "Identification code unbound successfully!"
+        bind_success: "Identification code binding successful!"
+        unbind_success: "Identification code unbound/unbinding successful!"
         already_bound: "You have already bound this identification code"
-        rebind_success: "Identification code rebound successfully!"
-        perfect_score_first: "Hidden theme Lucky Pink unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
-        zero_prompt: "Before viewing the result, please agree to the following additional terms:\n1. I acknowledge that PCL2's daily luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
+        rebind_success: "Identification code rebinding successful!"
+        perfect_score_first: "Hidden theme 'Lucky Pink' unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
+        zero_prompt: "Before viewing results, please agree to the following terms:\n1. I acknowledge and understand that PCL2's daily luck feature has no bugs.\n2. PCL2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
     errors:
       invalid_date: "Invalid date format, please use YYYY-MM-DD or MM-DD format"

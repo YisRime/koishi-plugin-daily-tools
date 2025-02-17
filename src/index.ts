@@ -583,13 +583,6 @@ export async function apply(ctx: Context, config: Config) {
               return;
             }
 
-            // 处理首次使用绑定命令但没有提供识别码的情况
-            if (!jrrpIdentification.getIdentificationCode(session.userId)) {
-              const message = await session.send(session.text('commands.jrrp.messages.identification_mode.need_bind'));
-              await utils.autoRecall(session, message);
-              return;
-            }
-
             // 处理绑定
             const code = options.b.trim().toUpperCase();
 

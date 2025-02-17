@@ -170,10 +170,9 @@ commands:
         9: "备用"
         10: "备用"
       identification_mode:
-        need_bind: "请先绑定识别码！"
         invalid_code: "识别码格式错误！请使用形如 XXXX-XXXX-XXXX-XXXX 的格式"
         bind_success: "识别码绑定成功！"
-        unbind_success: "识别码解绑成功！"
+        unbind_success: "识别码未绑定/解绑成功！"
         already_bound: "您已绑定该识别码"
         rebind_success: "识别码换绑成功！"
         perfect_score_first: "隐藏主题 欧皇粉 已解锁！\n前往 PCL2->更多->百宝箱->今日人品 确认"
