@@ -160,7 +160,7 @@ export const Config: Schema<Config> = Schema.intersect([
     probability: Schema.number().default(0.5).min(0).max(1),
   }).i18n({
     'zh-CN': require('./locales/zh-CN').config_mute,
-    'en-US': require('./locales/en-US').config_mute,
+    'en-US': require('./locales/zh-CN').config_mute,
   }),
 
   Schema.object({
@@ -374,35 +374,33 @@ export async function apply(ctx: Context, config: Config) {
     .option('z', '-z')
     .option('l', '-l')
     .action(async ({ session, options }) => {
-      let responseText: string;
+      // 列表查看和管理操作的权限检查
+      if (options?.l || options?.a || options?.r || options?.z) {
+        if (config.adminOnly && session.userId !== config.adminAccount) {
+          return session.text('commands.zanwo.messages.permission_denied');
+        }
+      }
 
       // 列表查看功能
       if (options?.l) {
         const targets = zanwoManager.getList();
-        responseText = targets.length
+        return targets.length
           ? session.text('commands.zanwo.messages.list', [targets.join(', ')])
           : session.text('commands.zanwo.messages.no_targets');
-        return session.send(responseText);
       }
 
       // 列表管理操作
       if (options?.a || options?.r) {
-        // 检查管理员权限
-        if (config.adminOnly && session.userId !== config.adminAccount) {
-          return session.send(session.text('commands.zanwo.messages.permission_denied'));
-        }
-
         const operation = options.a ? 'add' : 'remove';
         const targetRaw = options.a || options.r;
 
         const target = utils.parseTarget(targetRaw);
         if (!target) {
-          return session.send(session.text('commands.zanwo.messages.target_not_found'));
+          return session.text('commands.zanwo.messages.target_not_found');
         }
 
         const success = await zanwoManager[operation === 'add' ? 'addQQ' : 'removeQQ'](target);
-        responseText = session.text(`commands.zanwo.messages.${operation}_${success ? 'success' : 'failed'}`, [target]);
-        return session.send(responseText);
+        return session.text(`commands.zanwo.messages.${operation}_${success ? 'success' : 'failed'}`, [target]);
       }
 
       // 批量点赞
