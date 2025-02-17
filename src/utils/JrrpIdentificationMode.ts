@@ -12,8 +12,8 @@ export class JrrpIdentificationMode {
   /** 存储用户ID和识别码的映射关系 */
   private identificationCodes = new Map<string, string>();
 
-  /** 记录用户是否已获得过100点的状态 */
-  private first100Records = new Map<string, boolean>();
+  /** 记录用户是否已获得过满分的状态 */
+  private perfectScoreRecords = new Map<string, boolean>();
 
   /** JRRP数据的持久化存储路径 */
   private readonly JRRP_DATA_PATH = 'data/jrrp.json';
@@ -64,7 +64,7 @@ export class JrrpIdentificationMode {
     try {
       const data = await fs.readFile(this.JRRP_DATA_PATH, 'utf8')
         .then(content => JSON.parse(content))
-        .catch(() => ({ codes: {}, first100: {} }));
+        .catch(() => ({ codes: {}, perfectScore: {} }));
 
       await this.batchLoadData(data);
     } catch (error) {
@@ -80,7 +80,7 @@ export class JrrpIdentificationMode {
       await fs.mkdir(path.dirname(this.JRRP_DATA_PATH), { recursive: true });
       const data = {
         codes: Object.fromEntries(this.identificationCodes),
-        first100: Object.fromEntries(this.first100Records)
+        perfectScore: Object.fromEntries(this.perfectScoreRecords)
       };
       await fs.writeFile(this.JRRP_DATA_PATH, JSON.stringify(data, null, 2));
     } catch (error) {
@@ -89,21 +89,21 @@ export class JrrpIdentificationMode {
   }
 
   /**
-   * 标记用户已获得100点
+   * 标记用户已获得满分
    * @param userId 用户ID
    */
-  async markFirst100(userId: string): Promise<void> {
-    this.first100Records.set(userId, true);
+  async markPerfectScore(userId: string): Promise<void> {
+    this.perfectScoreRecords.set(userId, true);
     await this.saveData();
   }
 
   /**
-   * 检查用户是否首次获得100点
+   * 检查用户是否首次获得满分
    * @param userId 用户ID
-   * @returns 是否是首次获得100点
+   * @returns 是否是首次获得满分
    */
-  isFirst100(userId: string): boolean {
-    return !this.first100Records.get(userId);
+  isPerfectScoreFirst(userId: string): boolean {
+    return !this.perfectScoreRecords.get(userId);
   }
 
   /**
@@ -193,10 +193,10 @@ export class JrrpIdentificationMode {
           this.identificationCodes.set(userId, code as string)));
     }
 
-    if (data.first100) {
-      operations.push(...Object.entries(data.first100)
-        .map(([userId, hadFirst100]) =>
-          this.first100Records.set(userId, hadFirst100 as boolean)));
+    if (data.perfectScore) {
+      operations.push(...Object.entries(data.perfectScore)
+        .map(([userId, hadPerfectScore]) =>
+          this.perfectScoreRecords.set(userId, hadPerfectScore as boolean)));
     }
 
     await Promise.all(operations);

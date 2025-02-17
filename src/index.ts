@@ -686,10 +686,10 @@ export async function apply(ctx: Context, config: Config) {
         let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);
 
         // 添加额外消息提示
-        if (identificationCode && userFortune === 100 && jrrpIdentification.isFirst100(session.userId)) {
-          await jrrpIdentification.markFirst100(session.userId);
+        if (identificationCode && userFortune === 100 && jrrpIdentification.isPerfectScoreFirst(session.userId)) {
+          await jrrpIdentification.markPerfectScore(session.userId);
           fortuneResultText += session.text(config.specialMessages[userFortune]) +
-                        '\n' + session.text('commands.jrrp.messages.identification_mode.first_100');
+                        '\n' + session.text('commands.jrrp.messages.identification_mode.perfect_score_first');
         } else if (config.specialMessages?.[userFortune]) {
           fortuneResultText += session.text(config.specialMessages[userFortune]);
         } else if (config.rangeMessages) {

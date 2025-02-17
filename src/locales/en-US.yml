@@ -176,7 +176,7 @@ commands:
         unbind_success: "Identification code unbound successfully!"
         already_bound: "You have already bound this identification code"
         rebind_success: "Identification code rebound successfully!"
-        first_100: "Hidden theme Lucky Pink unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
+        perfect_score_first: "Hidden theme Lucky Pink unlocked!\nGo to PCL2->More->Toolbox->Daily Luck to confirm"
         zero_prompt: "Before viewing the result, please agree to the following additional terms:\n1. I acknowledge that PCL2's daily luck feature is completely bug-free.\n2. PCL2 is not responsible for any indirect property damage (such as smashing computers) caused by using this software.\n(y/n)"
     errors:
       invalid_date: "Invalid date format, please use YYYY-MM-DD or MM-DD format"
