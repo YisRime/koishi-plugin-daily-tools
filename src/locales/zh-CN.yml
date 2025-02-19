@@ -3,6 +3,7 @@ config_autolike:
   adminAccount: "管理员账号"
   enableNotify: "启用点赞成功时提示点赞主人"
   adminOnly: "仅管理员可配置一键点赞列表"
+  enableAutoBatch: "启用每日自动批量点赞"
 
 config_mute:
   $desc: "禁言配置"
@@ -86,7 +87,6 @@ commands:
       zanwo.list - 查看点赞列表
       zanwo.add @用户 - 添加到点赞列表
       zanwo.remove @用户 - 从点赞列表移除
-      zanwo.batch - 为列表中所有用户点赞
       zanwo.user @用户 - 为指定用户点赞
     messages:
       list: "当前点赞列表：{0}"
@@ -95,8 +95,6 @@ commands:
       remove_success: "已从点赞列表移除 {0}"
       remove_failed: "移除失败"
       no_targets: "点赞列表为空"
-      batch_success: "批量点赞完成！"
-      batch_failed: "批量点赞失败！"
       success: "点赞完成，记得回赞{0}哦~"
       like_failed: "点赞失败"
       target_not_found: "找不到指定用户"

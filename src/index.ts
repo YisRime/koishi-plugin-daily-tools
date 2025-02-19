@@ -88,6 +88,7 @@ export interface Config {
   adminAccount?: string
   enableNotify?: boolean
   adminOnly?: boolean
+  enableAutoBatch?: boolean  // 新增：自动批量点赞开关
 
   // mute相关
   sleep: SleepConfig
@@ -112,6 +113,7 @@ export const Config: Schema<Config> = Schema.intersect([
     adminAccount: Schema.string(),
     enableNotify: Schema.boolean().default(true),
     adminOnly: Schema.boolean().default(true),
+    enableAutoBatch: Schema.boolean().default(false),  // 新增：自动批量点赞开关
   }).i18n({
     'zh-CN': require('./locales/zh-CN').config_autolike,
     'en-US': require('./locales/en-US').config_autolike,
@@ -245,6 +247,25 @@ export async function apply(ctx: Context, config: Config) {
   utils.startCacheCleaner();
   const zanwoManager = new ZanwoManager(ctx);
 
+  // 设置自动点赞任务
+  if (config.enableAutoBatch) {
+    // 每24小时执行一次批量点赞
+    ctx.setInterval(async () => {
+      const targets = zanwoManager.getList();
+      if (targets.length) {
+        // 创建一个虚拟的 session 用于执行批量点赞
+        const bots = Array.from(ctx.bots.values());
+        for (const bot of bots) {
+          const session = bot.session();
+          if (session) {
+            await zanwoManager.sendBatchLikes(session, targets);
+            break;
+          }
+        }
+      }
+    }, 24 * 60 * 60 * 1000);
+  }
+
   /**
    * 计算用户的运势分数
    * @description
@@ -362,8 +383,7 @@ export async function apply(ctx: Context, config: Config) {
    * 2. zanwo.list - 查看点赞目标列表
    * 3. zanwo.add - 添加点赞目标
    * 4. zanwo.remove - 移除点赞目标
-   * 5. zanwo.batch - 批量点赞所有目标
-   * 6. zanwo.user - 指定目标点赞
+   * 5. zanwo.user - 指定目标点赞
    */
   const zanwo = ctx.command('zanwo')
     .alias('赞我')
@@ -420,30 +440,6 @@ export async function apply(ctx: Context, config: Config) {
 
       const success = await zanwoManager.removeQQ(parsedTarget);
       return session.text(`commands.zanwo.messages.remove_${success ? 'success' : 'failed'}`, [parsedTarget]);
-    });
-
-  // 批量点赞功能
-  zanwo.subcommand('.batch')
-    .action(async ({ session }) => {
-      if (config.adminOnly && session.userId !== config.adminAccount) {
-        return session.text('commands.zanwo.messages.permission_denied');
-      }
-
-      const targets = zanwoManager.getList();
-      if (!targets.length) {
-        const message = await session.send(session.text('commands.zanwo.messages.no_targets'));
-        await utils.autoRecall(session, message);
-        return;
-      }
-
-      const results = await zanwoManager.sendBatchLikes(session, targets);
-      const successCount = Array.from(results.values()).filter(Boolean).length;
-      const success = successCount === targets.length;
-
-      const message = await session.send(
-        session.text(`commands.zanwo.messages.batch_${success ? 'success' : 'failed'}`)
-      );
-      await utils.autoRecall(session, message);
     });
 
   // 指定用户点赞功能

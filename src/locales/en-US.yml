@@ -3,6 +3,7 @@ config_autolike:
   adminAccount: "Admin Account"
   enableNotify: "Enable notification when like is successful"
   adminOnly: "Only admins can configure auto-like list"
+  enableAutoBatch: "Enable daily auto batch like"
 
 config_mute:
   $desc: "Mute Configuration"
@@ -85,7 +86,6 @@ commands:
       zanwo.list - View like list
       zanwo.add @user - Add to like list
       zanwo.remove @user - Remove from like list
-      zanwo.batch - Like all users in list
       zanwo.user @user - Like specific user
     messages:
       list: "Current like list: {0}"
@@ -94,8 +94,6 @@ commands:
       remove_success: "Removed {0} from like list"
       remove_failed: "Remove failed"
       no_targets: "Like list is empty"
-      batch_success: "Batch like completed!"
-      batch_failed: "Batch like failed!"
       success: "Like completed, remember to like back {0}!"
       like_failed: "Like failed"
       target_not_found: "User not found"
