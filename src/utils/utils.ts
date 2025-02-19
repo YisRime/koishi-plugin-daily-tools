@@ -15,9 +15,6 @@ import { Session, h } from 'koishi';
 export const CONSTANTS = {
   CACHE_KEYS: {
     MEMBER_LIST: (platform: string, guildId: string) => `members:${platform}:${guildId}`,
-    JRRP: {
-      SCORE: (seed: string) => `jrrp:score:${seed}`,
-    }
   },
   TIMEOUTS: {
     PROMPT: 10000,
@@ -27,8 +24,6 @@ export const CONSTANTS = {
   LIMITS: {
     MAX_DAYS_TO_CHECK: 365,
     MAX_CACHE_SIZE: 1000,
-    FOOL_CACHE_SIZE: 5, // 愚人模式缓存的结果数量
-    NORMAL_CACHE_SIZE: 1, // 新增：普通模式缓存大小（通常只需要1个）
   }
 };
 
@@ -39,7 +34,6 @@ export const CONSTANTS = {
  */
 export const cacheConfig = {
   memberListExpiry: 3600000, // 1小时
-  jrrpExpiry: 86400000,     // 统一使用24小时过期
 };
 
 /**
@@ -58,11 +52,9 @@ interface CacheEntry<T> {
  * 统一的缓存存储
  * @namespace
  * @property {Map<string, CacheEntry<string[]>>} memberList - 群成员列表缓存
- * @property {Map<string, CacheEntry<string>>} jrrp - JRRP缓存
  */
 export const cacheStore = {
   memberList: new Map<string, CacheEntry<string[]>>(),
-  jrrpScore: new Map<string, CacheEntry<number>>(),
 };
 
 /**
@@ -308,24 +300,6 @@ export function parseTarget(input: string): string | null {
 }
 
 /**
- * 获取缓存的普通模式结果
- * @param key - 缓存键
- * @returns 缓存的结果字符串，不存在或过期则返回null
- */
-export function getCachedScore(seed: string): number | null {
-  return getCached(CONSTANTS.CACHE_KEYS.JRRP.SCORE(seed), cacheStore.jrrpScore);
-}
-
-/**
- * 设置普通模式结果缓存
- * @param key - 缓存键
- * @param result - 要缓存的结果字符串
- */
-export function setCachedScore(seed: string, score: number): void {
-  setCached(CONSTANTS.CACHE_KEYS.JRRP.SCORE(seed), score, cacheStore.jrrpScore);
-}
-
-/**
  * 统一的缓存管理函数
  * @template T 缓存数据的类型
  * @param {string} key - 缓存键
@@ -351,7 +325,7 @@ function getCached<T>(key: string, map: Map<string, CacheEntry<T>>): T | null {
  * @param {number} [expiry] - 缓存过期时间（毫秒），默认使用 cacheConfig.jrrpExpiry
  * @description 将数据存入缓存，并设置过期时间
  */
-function setCached<T>(key: string, data: T, map: Map<string, CacheEntry<T>>, expiry = cacheConfig.jrrpExpiry): void {
+function setCached<T>(key: string, data: T, map: Map<string, CacheEntry<T>>, expiry = cacheConfig.memberListExpiry): void {
   map.set(key, {
     data,
     expiry: Date.now() + expiry

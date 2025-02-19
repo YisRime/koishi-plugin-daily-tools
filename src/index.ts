@@ -1,5 +1,5 @@
 // 基础依赖导入和插件元数据定义
-import { Context, Schema, Random} from 'koishi'
+import { Context, Schema, Random, h } from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
 import { ZanwoManager } from './utils/ZanwoManager'
 import { ConfigValidator } from './utils/ConfigValidator'
@@ -360,8 +360,8 @@ export async function apply(ctx: Context, config: Config) {
    * 改为子命令结构:
    * 1. zanwo - 默认点赞自己
    * 2. zanwo.list - 查看点赞目标列表
-   * 3. zanwo.add - 添加点赞目标(仅管理员)
-   * 4. zanwo.remove - 移除点赞目标(仅管理员)
+   * 3. zanwo.add - 添加点赞目标
+   * 4. zanwo.remove - 移除点赞目标
    * 5. zanwo.batch - 批量点赞所有目标
    * 6. zanwo.user - 指定目标点赞
    */
@@ -377,9 +377,8 @@ export async function apply(ctx: Context, config: Config) {
       await utils.autoRecall(session, message);
     });
 
-  // 使用 subcommand 统一注册子指令
-  zanwo
-    .subcommand('list')
+  // 列表查看功能
+  zanwo.subcommand('.list')
     .action(async ({ session }) => {
       if (config.adminOnly && session.userId !== config.adminAccount) {
         return session.text('commands.zanwo.messages.permission_denied');
@@ -391,8 +390,8 @@ export async function apply(ctx: Context, config: Config) {
         : session.text('commands.zanwo.messages.no_targets');
     });
 
-  zanwo
-    .subcommand('add <target:text>')
+  // 添加目标功能
+  zanwo.subcommand('.add <target:text>')
     .action(async ({ session }, target) => {
       if (config.adminOnly && session.userId !== config.adminAccount) {
         return session.text('commands.zanwo.messages.permission_denied');
@@ -407,8 +406,8 @@ export async function apply(ctx: Context, config: Config) {
       return session.text(`commands.zanwo.messages.add_${success ? 'success' : 'failed'}`, [parsedTarget]);
     });
 
-  zanwo
-    .subcommand('remove <target:text>')
+  // 移除目标功能
+  zanwo.subcommand('.remove <target:text>')
     .action(async ({ session }, target) => {
       if (config.adminOnly && session.userId !== config.adminAccount) {
         return session.text('commands.zanwo.messages.permission_denied');
@@ -423,8 +422,8 @@ export async function apply(ctx: Context, config: Config) {
       return session.text(`commands.zanwo.messages.remove_${success ? 'success' : 'failed'}`, [parsedTarget]);
     });
 
-  zanwo
-    .subcommand('batch')
+  // 批量点赞功能
+  zanwo.subcommand('.batch')
     .action(async ({ session }) => {
       if (config.adminOnly && session.userId !== config.adminAccount) {
         return session.text('commands.zanwo.messages.permission_denied');
@@ -447,8 +446,8 @@ export async function apply(ctx: Context, config: Config) {
       await utils.autoRecall(session, message);
     });
 
-  zanwo
-    .subcommand('user <target:text>')
+  // 指定用户点赞功能
+  zanwo.subcommand('.user <target:text>')
     .action(async ({ session }, target) => {
       const parsedTarget = utils.parseTarget(target);
       if (!parsedTarget || parsedTarget === session.userId) {
@@ -534,9 +533,8 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 使用 subcommand 统一注册子指令
-  muteCmd
-    .subcommand('me [duration:number]')
+  // 禁言自己子命令
+  muteCmd.subcommand('.me [duration:number]')
     .action(async ({ session }, duration) => {
       if (duration && duration > config.maxAllowedDuration) {
         const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.maxAllowedDuration]));
@@ -563,8 +561,8 @@ export async function apply(ctx: Context, config: Config) {
       await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
     });
 
-  muteCmd
-    .subcommand('user <target:text> [duration:number]')
+  // 指定目标禁言子命令
+  muteCmd.subcommand('.user <target:text> [duration:number]')
     .action(async ({ session }, target, duration) => {
       if (!config.enableMuteOthers) {
         const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'));
@@ -611,7 +609,6 @@ export async function apply(ctx: Context, config: Config) {
   // jrrp命令改造为子命令结构
   const jrrpCmd = ctx.command('jrrp')
     .action(async ({ session }) => {
-      // 处理基础运势计算
       try {
         const dateForCalculation = new Date();
         const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`;
@@ -621,17 +618,11 @@ export async function apply(ctx: Context, config: Config) {
           return;
         }
 
-        // 替换 userNickname，改为 at 消息
-        const atMessage = `<at id="${session.userId}"/>`;
         const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
         const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
 
-        // 获取或计算分数
-        let userFortune = utils.getCachedScore(userDateSeed);
-        if (userFortune === null) {
-          userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
-          utils.setCachedScore(userDateSeed, userFortune);
-        }
+        // 直接计算分数
+        const userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
 
         // 处理识别码零分确认
         if (identificationCode && userFortune === 0) {
@@ -646,7 +637,8 @@ export async function apply(ctx: Context, config: Config) {
 
         // 格式化分数显示
         const formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
-        let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, atMessage]);
+        // 修复：使用正确的方式拼接 at 消息
+        let fortuneResultText = h('at', { id: session.userId }) + ` ${session.text('commands.jrrp.messages.result', [formattedFortune])}`;
 
         // 添加额外消息提示
         if (identificationCode && userFortune === 100 && jrrpIdentification.isPerfectScoreFirst(session.userId)) {
@@ -671,11 +663,10 @@ export async function apply(ctx: Context, config: Config) {
         const message = await session.send(session.text('commands.jrrp.messages.error'));
         await utils.autoRecall(session, message);
       }
-    });
+    })
 
-  // 使用 subcommand 统一注册子指令
-  jrrpCmd
-    .subcommand('date <date:text>')
+  // 日期查询子命令
+  jrrpCmd.subcommand('.date <date:text>')
     .action(async ({ session }, date) => {
       const dateForCalculation = utils.parseDate(date, new Date());
       if (!dateForCalculation) {
@@ -686,10 +677,10 @@ export async function apply(ctx: Context, config: Config) {
 
       // ... 复用主命令的运势计算逻辑，使用指定日期
       // 其余逻辑与主命令相同
-    });
+    })
 
-  jrrpCmd
-    .subcommand('bind [code:string]')
+  // 绑定识别码子命令
+  jrrpCmd.subcommand('.bind [code:string]')
     .action(async ({ session }, code) => {
       try {
         // 优化消息处理逻辑
@@ -731,10 +722,10 @@ export async function apply(ctx: Context, config: Config) {
         const message = await session.send(session.text('commands.jrrp.messages.error'));
         await utils.autoRecall(session, message);
       }
-    });
+    })
 
-  jrrpCmd
-    .subcommand('score <score:number>')
+  // 查找特定分数日期子命令
+  jrrpCmd.subcommand('.score <score:number>')
     .action(async ({ session }, score) => {
       if (score < 0 || score > 100) {
         const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
@@ -744,5 +735,5 @@ export async function apply(ctx: Context, config: Config) {
 
       const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
       await utils.findDateForScore(session, score, identificationCode, calculateScore);
-    });
+    })
 }

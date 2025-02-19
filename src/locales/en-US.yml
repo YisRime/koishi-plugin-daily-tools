@@ -108,8 +108,6 @@ commands:
       mute.me [duration] - Mute yourself
       mute.user @user [duration] - Mute specific user
       Duration in minutes, uses default from config if not specified
-    examples: |-
-      mute -u/r @user [1]
     messages:
       errors:
         no_valid_members: "No valid members to mute"
@@ -126,10 +124,11 @@ commands:
       jrrp - Check today's luck
       jrrp.date <date> - Check luck for specific date
       jrrp.score <score> - Find date for specific score
+      jrrp.bind [code] - Bind/Unbind identification code
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:
-      result: "{1} Your luck score today is: {0}"
+      result: "Your luck score today is: {0}"
       prompt: "Would you like to see your luck today?"
       cancel: "Alright, have a nice day!"
       error: "Error calculating daily luck"
