@@ -377,8 +377,9 @@ export async function apply(ctx: Context, config: Config) {
       await utils.autoRecall(session, message);
     });
 
-  // 列表查看功能
-  zanwo.subcommand('.list')
+  // 使用 subcommand 统一注册子指令
+  zanwo
+    .subcommand('list')
     .action(async ({ session }) => {
       if (config.adminOnly && session.userId !== config.adminAccount) {
         return session.text('commands.zanwo.messages.permission_denied');
@@ -390,8 +391,8 @@ export async function apply(ctx: Context, config: Config) {
         : session.text('commands.zanwo.messages.no_targets');
     });
 
-  // 添加目标功能
-  zanwo.subcommand('.add <target:text>')
+  zanwo
+    .subcommand('add <target:text>')
     .action(async ({ session }, target) => {
       if (config.adminOnly && session.userId !== config.adminAccount) {
         return session.text('commands.zanwo.messages.permission_denied');
@@ -406,8 +407,8 @@ export async function apply(ctx: Context, config: Config) {
       return session.text(`commands.zanwo.messages.add_${success ? 'success' : 'failed'}`, [parsedTarget]);
     });
 
-  // 移除目标功能
-  zanwo.subcommand('.remove <target:text>')
+  zanwo
+    .subcommand('remove <target:text>')
     .action(async ({ session }, target) => {
       if (config.adminOnly && session.userId !== config.adminAccount) {
         return session.text('commands.zanwo.messages.permission_denied');
@@ -422,8 +423,8 @@ export async function apply(ctx: Context, config: Config) {
       return session.text(`commands.zanwo.messages.remove_${success ? 'success' : 'failed'}`, [parsedTarget]);
     });
 
-  // 批量点赞功能
-  zanwo.subcommand('.batch')
+  zanwo
+    .subcommand('batch')
     .action(async ({ session }) => {
       if (config.adminOnly && session.userId !== config.adminAccount) {
         return session.text('commands.zanwo.messages.permission_denied');
@@ -446,8 +447,8 @@ export async function apply(ctx: Context, config: Config) {
       await utils.autoRecall(session, message);
     });
 
-  // 指定用户点赞功能
-  zanwo.subcommand('.user <target:text>')
+  zanwo
+    .subcommand('user <target:text>')
     .action(async ({ session }, target) => {
       const parsedTarget = utils.parseTarget(target);
       if (!parsedTarget || parsedTarget === session.userId) {
@@ -533,8 +534,9 @@ export async function apply(ctx: Context, config: Config) {
       }
     });
 
-  // 禁言自己子命令
-  muteCmd.subcommand('.me [duration:number]')
+  // 使用 subcommand 统一注册子指令
+  muteCmd
+    .subcommand('me [duration:number]')
     .action(async ({ session }, duration) => {
       if (duration && duration > config.maxAllowedDuration) {
         const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.maxAllowedDuration]));
@@ -561,8 +563,8 @@ export async function apply(ctx: Context, config: Config) {
       await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
     });
 
-  // 指定目标禁言子命令
-  muteCmd.subcommand('.user <target:text> [duration:number]')
+  muteCmd
+    .subcommand('user <target:text> [duration:number]')
     .action(async ({ session }, target, duration) => {
       if (!config.enableMuteOthers) {
         const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'));
@@ -669,10 +671,11 @@ export async function apply(ctx: Context, config: Config) {
         const message = await session.send(session.text('commands.jrrp.messages.error'));
         await utils.autoRecall(session, message);
       }
-    })
+    });
 
-  // 日期查询子命令
-  jrrpCmd.subcommand('.date <date:text>')
+  // 使用 subcommand 统一注册子指令
+  jrrpCmd
+    .subcommand('date <date:text>')
     .action(async ({ session }, date) => {
       const dateForCalculation = utils.parseDate(date, new Date());
       if (!dateForCalculation) {
@@ -683,10 +686,10 @@ export async function apply(ctx: Context, config: Config) {
 
       // ... 复用主命令的运势计算逻辑，使用指定日期
       // 其余逻辑与主命令相同
-    })
+    });
 
-  // 绑定识别码子命令
-  jrrpCmd.subcommand('.bind [code:string]')
+  jrrpCmd
+    .subcommand('bind [code:string]')
     .action(async ({ session }, code) => {
       try {
         // 优化消息处理逻辑
@@ -728,10 +731,10 @@ export async function apply(ctx: Context, config: Config) {
         const message = await session.send(session.text('commands.jrrp.messages.error'));
         await utils.autoRecall(session, message);
       }
-    })
+    });
 
-  // 查找特定分数日期子命令
-  jrrpCmd.subcommand('.score <score:number>')
+  jrrpCmd
+    .subcommand('score <score:number>')
     .action(async ({ session }, score) => {
       if (score < 0 || score > 100) {
         const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
@@ -741,5 +744,5 @@ export async function apply(ctx: Context, config: Config) {
 
       const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
       await utils.findDateForScore(session, score, identificationCode, calculateScore);
-    })
+    });
 }
