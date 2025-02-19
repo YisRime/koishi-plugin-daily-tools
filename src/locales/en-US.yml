@@ -79,12 +79,14 @@ commands:
       invalid_time: "Invalid time format"
 
   zanwo:
-    description: "Auto-like, can like others"
+    description: "Auto-like feature"
     usage: |-
-      Send command to receive likes from bot, limit 50 likes
-      -u @user Like specific user
-      -a/r @user Add/Remove user from like list
-      -z Like all users in the list
+      zanwo - Like yourself
+      zanwo.list - View like list
+      zanwo.add @user - Add to like list
+      zanwo.remove @user - Remove from like list
+      zanwo.batch - Like all users in list
+      zanwo.user @user - Like specific user
     messages:
       list: "Current like list: {0}"
       add_success: "Added {0} to like list"
@@ -100,11 +102,12 @@ commands:
       permission_denied: "Admin only"
 
   mute:
-    description: "Mute yourself or others"
+    description: "Mute feature"
     usage: |-
-      [duration] Specify mute duration (minutes)
-      -u Mute specified user
-      -r Mute random user
+      mute [duration] - Random mute (self or others)
+      mute.me [duration] - Mute yourself
+      mute.user @user [duration] - Mute specific user
+      Duration in minutes, uses default from config if not specified
     examples: |-
       mute -u/r @user [1]
     messages:
@@ -118,14 +121,11 @@ commands:
         others_disabled: "Muting others is disabled"
 
   jrrp:
-    description: "Daily luck, calculate today's fortune"
+    description: "Daily luck feature"
     usage: |-
-      Check daily luck, supports:
-      -d [date] Check luck for specific date
-      -g [score] Find date for specific score
-    examples: |-
-      jrrp -d 1970-01-01
-      jrrp -g 100
+      jrrp - Check today's luck
+      jrrp.date <date> - Check luck for specific date
+      jrrp.score <score> - Find date for specific score
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:

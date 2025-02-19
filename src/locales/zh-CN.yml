@@ -79,12 +79,15 @@ commands:
       invalid_time: "无效的时间格式"
 
   zanwo:
-    description: "自动点赞，可以点赞他人"
+    description: "自动点赞功能"
     usage: |-
-      发送命令即可让机器人赞你，上限50个赞
-      -u @用户 为指定用户点赞
-      -a/r @用户 从点赞列表添加/移除用户
-      -z 点赞列表中所有用户
+      发送命令让机器人给你点赞，上限50个赞
+      zanwo - 为自己点赞
+      zanwo.list - 查看点赞列表
+      zanwo.add @用户 - 添加到点赞列表
+      zanwo.remove @用户 - 从点赞列表移除
+      zanwo.batch - 为列表中所有用户点赞
+      zanwo.user @用户 - 为指定用户点赞
     messages:
       list: "当前点赞列表：{0}"
       add_success: "已添加 {0} 到点赞列表"
@@ -100,13 +103,12 @@ commands:
       permission_denied: "仅管理员可用"
 
   mute:
-    description: "禁言自己或他人"
+    description: "禁言功能"
     usage: |-
-      [时长] 指定禁言时长（分钟）
-      -u 禁言指定用户
-      -r 禁言随机用户
-    examples: |-
-      mute -u/r @用户 [1]
+      mute [时长] - 随机禁言（自己或他人）
+      mute.me [时长] - 禁言自己
+      mute.user @用户 [时长] - 禁言指定用户
+      时长单位为分钟，不指定则使用配置的默认值
     messages:
       errors:
         no_valid_members: "无可禁言成员"
@@ -118,16 +120,11 @@ commands:
         others_disabled: "已禁用禁言他人功能"
 
   jrrp:
-    description: "今日人品，计算今日运势"
+    description: "今日人品功能"
     usage: |-
-      查看今日人品，支持以下功能：
-      -d [日期] 查看指定日期运势
-      -g [分数] 查找特定分数出现的日期
-    examples: |-
-      jrrp -d 1970-01-01
-      jrrp -g 100
-    options:
-      d: "指定日期（YYYY-MM-DD 或 MM-DD）"
+      jrrp - 查看今日人品
+      jrrp.date <日期> - 查看指定日期运势
+      jrrp.score <分数> - 查找特定分数出现的日期
     messages:
       result: "{1} 你今天的人品值是：{0}"
       prompt: "你要看看今天的人品吗？"

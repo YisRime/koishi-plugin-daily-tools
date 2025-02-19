@@ -357,83 +357,106 @@ export async function apply(ctx: Context, config: Config) {
   /**
    * 点赞命令处理
    * @description
-   * 支持以下功能:
-   * 1. -l 查看点赞目标列表
-   * 2. -a/-r 添加/移除点赞目标(仅管理员)
-   * 3. -z 批量点赞所有目标
-   * 4. -u 指定目标点赞
-   * 5. 无参数时点赞自己
-   *
-   * 所有操作都有对应的成功/失败提示
+   * 改为子命令结构:
+   * 1. zanwo - 默认点赞自己
+   * 2. zanwo.list - 查看点赞目标列表
+   * 3. zanwo.add - 添加点赞目标(仅管理员)
+   * 4. zanwo.remove - 移除点赞目标(仅管理员)
+   * 5. zanwo.batch - 批量点赞所有目标
+   * 6. zanwo.user - 指定目标点赞
    */
-  ctx.command('zanwo')
+  const zanwo = ctx.command('zanwo')
     .alias('赞我')
-    .option('u', '-u <target:text>')
-    .option('a', '-a <target:text>')
-    .option('r', '-r <target:text>')
-    .option('z', '-z')
-    .option('l', '-l')
-    .action(async ({ session, options }) => {
-      // 列表查看和管理操作的权限检查
-      if (options?.l || options?.a || options?.r || options?.z) {
-        if (config.adminOnly && session.userId !== config.adminAccount) {
-          return session.text('commands.zanwo.messages.permission_denied');
-        }
+    .action(async ({ session }) => {
+      const success = await zanwoManager.sendLikes(session, session.userId);
+      const message = await session.send(
+        success
+          ? session.text('commands.zanwo.messages.success', [config.enableNotify ? (config.adminAccount || '') : ''])
+          : session.text('commands.zanwo.messages.like_failed')
+      );
+      await utils.autoRecall(session, message);
+    });
+
+  // 列表查看功能
+  zanwo.subcommand('.list')
+    .action(async ({ session }) => {
+      if (config.adminOnly && session.userId !== config.adminAccount) {
+        return session.text('commands.zanwo.messages.permission_denied');
       }
 
-      // 列表查看功能
-      if (options?.l) {
-        const targets = zanwoManager.getList();
-        return targets.length
-          ? session.text('commands.zanwo.messages.list', [targets.join(', ')])
-          : session.text('commands.zanwo.messages.no_targets');
+      const targets = zanwoManager.getList();
+      return targets.length
+        ? session.text('commands.zanwo.messages.list', [targets.join(', ')])
+        : session.text('commands.zanwo.messages.no_targets');
+    });
+
+  // 添加目标功能
+  zanwo.subcommand('.add <target:text>')
+    .action(async ({ session }, target) => {
+      if (config.adminOnly && session.userId !== config.adminAccount) {
+        return session.text('commands.zanwo.messages.permission_denied');
       }
 
-      // 列表管理操作
-      if (options?.a || options?.r) {
-        const operation = options.a ? 'add' : 'remove';
-        const targetRaw = options.a || options.r;
-
-        const target = utils.parseTarget(targetRaw);
-        if (!target) {
-          return session.text('commands.zanwo.messages.target_not_found');
-        }
-
-        const success = await zanwoManager[operation === 'add' ? 'addQQ' : 'removeQQ'](target);
-        return session.text(`commands.zanwo.messages.${operation}_${success ? 'success' : 'failed'}`, [target]);
+      const parsedTarget = utils.parseTarget(target);
+      if (!parsedTarget) {
+        return session.text('commands.zanwo.messages.target_not_found');
       }
 
-      // 批量点赞
-      if (options?.z) {
-        const targets = zanwoManager.getList();
-        if (!targets.length) {
-          const message = await session.send(session.text('commands.zanwo.messages.no_targets'));
-          await utils.autoRecall(session, message);
-          return;
-        }
+      const success = await zanwoManager.addQQ(parsedTarget);
+      return session.text(`commands.zanwo.messages.add_${success ? 'success' : 'failed'}`, [parsedTarget]);
+    });
 
-        const results = await zanwoManager.sendBatchLikes(session, targets);
-        const successCount = Array.from(results.values()).filter(Boolean).length;
-        const success = successCount === targets.length;
+  // 移除目标功能
+  zanwo.subcommand('.remove <target:text>')
+    .action(async ({ session }, target) => {
+      if (config.adminOnly && session.userId !== config.adminAccount) {
+        return session.text('commands.zanwo.messages.permission_denied');
+      }
 
-        const message = await session.send(
-          session.text(`commands.zanwo.messages.batch_${success ? 'success' : 'failed'}`)
-        );
+      const parsedTarget = utils.parseTarget(target);
+      if (!parsedTarget) {
+        return session.text('commands.zanwo.messages.target_not_found');
+      }
+
+      const success = await zanwoManager.removeQQ(parsedTarget);
+      return session.text(`commands.zanwo.messages.remove_${success ? 'success' : 'failed'}`, [parsedTarget]);
+    });
+
+  // 批量点赞功能
+  zanwo.subcommand('.batch')
+    .action(async ({ session }) => {
+      if (config.adminOnly && session.userId !== config.adminAccount) {
+        return session.text('commands.zanwo.messages.permission_denied');
+      }
+
+      const targets = zanwoManager.getList();
+      if (!targets.length) {
+        const message = await session.send(session.text('commands.zanwo.messages.no_targets'));
         await utils.autoRecall(session, message);
         return;
       }
 
-      // 单个点赞
-      const likeTargetId = utils.parseTarget(options.u) || session.userId;
-      if (options?.u) {
-        if (likeTargetId === session.userId) {
-          const message = await session.send(session.text('commands.zanwo.messages.target_not_found'));
-          await utils.autoRecall(session, message);
-          return;
-        }
+      const results = await zanwoManager.sendBatchLikes(session, targets);
+      const successCount = Array.from(results.values()).filter(Boolean).length;
+      const success = successCount === targets.length;
+
+      const message = await session.send(
+        session.text(`commands.zanwo.messages.batch_${success ? 'success' : 'failed'}`)
+      );
+      await utils.autoRecall(session, message);
+    });
+
+  // 指定用户点赞功能
+  zanwo.subcommand('.user <target:text>')
+    .action(async ({ session }, target) => {
+      const parsedTarget = utils.parseTarget(target);
+      if (!parsedTarget || parsedTarget === session.userId) {
+        const message = await session.send(session.text('commands.zanwo.messages.target_not_found'));
+        await utils.autoRecall(session, message);
+        return;
       }
 
-      const success = await zanwoManager.sendLikes(session, likeTargetId);
+      const success = await zanwoManager.sendLikes(session, parsedTarget);
       const message = await session.send(
         success
           ? session.text('commands.zanwo.messages.success', [config.enableNotify ? (config.adminAccount || '') : ''])
@@ -446,31 +469,23 @@ export async function apply(ctx: Context, config: Config) {
    * 禁言命令处理
    * @description
    * 支持以下功能:
-   * 1. 指定时长禁言,[duration]参数
-   * 2. -u 指定目标禁言
-   * 3. -r 随机选择目标禁言
-   *
-   * 特殊处理:
-   * 1. 概率判定是否禁言自己
-   * 2. 目标无效时默认禁言自己
-   * 3. 随机时长在配置范围内
-   * 4. 支持禁言消息提示
+   * 1. mute - 随机选择目标禁言
+   * 2. mute.me - 禁言自己
+   * 3. mute.user - 指定目标禁言
    */
-  ctx.command('mute [duration:number]')
+  const muteCmd = ctx.command('mute [duration:number]')
     .channelFields(['guildId'])
-    .option('u', '-u <target:text>')
-    .option('r', '-r')
-    .action(async ({ session, options }, duration) => {
-      // 检查是否允许禁言他人
-      if (!config.enableMuteOthers && (options?.u || options?.r)) {
-        const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'));
+    .action(async ({ session }, duration) => {
+      // 验证禁言时长是否超过最大限制
+      if (duration && duration > config.maxAllowedDuration) {
+        const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.maxAllowedDuration]));
         await utils.autoRecall(session, message);
         return;
       }
 
-      // 验证禁言时长是否超过最大限制
-      if (duration && duration > config.maxAllowedDuration) {
-        const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.maxAllowedDuration]));
+      // 如果不允许禁言他人，默认禁言自己
+      if (!config.enableMuteOthers) {
+        const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'));
         await utils.autoRecall(session, message);
         return;
       }
@@ -494,151 +509,109 @@ export async function apply(ctx: Context, config: Config) {
         }
       }
 
-      // 处理随机禁言模式
-      if (options?.r) {
-        try {
-          const validMembers = await utils.getCachedMemberList(session);
-          if (!validMembers.length) {
-            const message = await session.send(session.text('commands.mute.messages.errors.no_valid_members'));
-            await utils.autoRecall(session, message);
-            return;
-          }
-
-          if (!randomGenerator.bool(config.probability)) {
-            await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
-            return;
-          }
-
-          // 随机选择目标并执行禁言
-          const targetIndex = randomGenerator.int(0, validMembers.length - 1);
-          const targetId = validMembers[targetIndex];
-          await utils.executeMute(session, targetId, muteDuration, config.enableMessage);
-          return;
-        } catch (error) {
-          console.error('Failed to execute random mute:', error);
+      try {
+        const validMembers = await utils.getCachedMemberList(session);
+        if (!validMembers.length) {
           const message = await session.send(session.text('commands.mute.messages.errors.no_valid_members'));
           await utils.autoRecall(session, message);
           return;
         }
-      }
 
-      // 处理指定目标禁言模式
-      const muteTargetId = utils.parseTarget(options.u);
-      if (options?.u) {
-        // 如果目标无效或是自己，则禁言自己
-        if (!muteTargetId || muteTargetId === session.userId) {
-          await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
-          return;
-        }
-
-        // 根据概率决定是禁言自己还是目标
         if (!randomGenerator.bool(config.probability)) {
           await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
           return;
         }
 
-        await utils.executeMute(session, muteTargetId, muteDuration, config.enableMessage);
+        // 随机选择目标并执行禁言
+        const targetIndex = randomGenerator.int(0, validMembers.length - 1);
+        const targetId = validMembers[targetIndex];
+        await utils.executeMute(session, targetId, muteDuration, config.enableMessage);
+      } catch (error) {
+        console.error('Failed to execute random mute:', error);
+        const message = await session.send(session.text('commands.mute.messages.errors.no_valid_members'));
+        await utils.autoRecall(session, message);
+      }
+    });
+
+  // 禁言自己子命令
+  muteCmd.subcommand('.me [duration:number]')
+    .action(async ({ session }, duration) => {
+      if (duration && duration > config.maxAllowedDuration) {
+        const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.maxAllowedDuration]));
+        await utils.autoRecall(session, message);
         return;
       }
 
-      // 默认禁言自己
+      let muteDuration: number;
+      if (duration) {
+        muteDuration = duration * 60;
+      } else {
+        switch (config.mute.type) {
+          case MuteDurationType.STATIC:
+            muteDuration = config.mute.duration * 60;
+            break;
+          case MuteDurationType.RANDOM:
+            muteDuration = new Random().int(config.mute.min * 60, config.mute.max * 60);
+            break;
+          default:
+            muteDuration = 5 * 60;
+        }
+      }
+
       await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
     });
 
-  /**
-   * 今日人品命令处理
-   * @description
-   * 支持以下功能:
-   * 1. -d 指定日期查询
-   * 2. -b 特殊代码绑定/解绑
-   * 3. -g 查找特定分数的日期
-   *
-   * 特殊处理:
-   * 1. 节日特殊消息
-   * 2. 特殊代码零分确认
-   * 3. 首次100分特殊提示
-   * 4. 分数范围和特殊分数消息
-   * 5. 支持分数显示格式化
-   */
-  ctx.command('jrrp')
-    .option('d', '-d <date:string>')
-    .option('g', '-g <score:integer>')
-    .option('b', '-b [code:string]')
-    .action(async ({ session, options }) => {
-      // 处理识别码绑定
-      if (options?.b !== undefined) {
-        try {
-          // 优化消息处理逻辑，避免多次发送
-          let responseText: string;
-
-          // 尝试删除原始命令消息
-          if (session.messageId) {
-            await utils.autoRecall(session, session.messageId, 500);
-          }
-
-          if (!options.b) {
-            await jrrpIdentification.removeIdentificationCode(session.userId);
-            responseText = session.text('commands.jrrp.messages.identification_mode.unbind_success');
-          } else {
-            const code = options.b.trim().toUpperCase();
-
-            if (!code || !jrrpIdentification.validateIdentificationCode(code)) {
-              responseText = session.text('commands.jrrp.messages.identification_mode.invalid_code');
-            } else {
-              const existingCode = await jrrpIdentification.getIdentificationCode(session.userId);
-
-              if (existingCode === code) {
-                responseText = session.text('commands.jrrp.messages.identification_mode.already_bound');
-              } else {
-                await jrrpIdentification.bindIdentificationCode(session.userId, code);
-                responseText = session.text(
-                  existingCode
-                    ? 'commands.jrrp.messages.identification_mode.rebind_success'
-                    : 'commands.jrrp.messages.identification_mode.bind_success'
-                );
-              }
-            }
-          }
-
-          const message = await session.send(responseText);
-          await utils.autoRecall(session, message);
-          return;
-        } catch (error) {
-          console.error('Failed to handle identification code:', error);
-          const message = await session.send(session.text('commands.jrrp.messages.error'));
-          await utils.autoRecall(session, message);
-          return;
-        }
-      }
-
-      // 处理查找特定分数的日期
-      if (options?.g !== undefined && options.g !== null) {
-        // 验证分数范围和处理逻辑保持不变...
-        if (options.g < 0 || options.g > 100) {
-          const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
-          await utils.autoRecall(session, message);
-          return;
-        }
-
-        const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
-        await utils.findDateForScore(session, options.g, identificationCode, calculateScore);
+  // 指定目标禁言子命令
+  muteCmd.subcommand('.user <target:text> [duration:number]')
+    .action(async ({ session }, target, duration) => {
+      if (!config.enableMuteOthers) {
+        const message = await session.send(session.text('commands.mute.messages.notify.others_disabled'));
+        await utils.autoRecall(session, message);
         return;
       }
 
-      // 处理日期解析和运势计算
-      let dateForCalculation = new Date();
-      if (options?.d) {
-        const date = utils.parseDate(options.d, dateForCalculation);
-        if (!date) {
-          const message = await session.send(session.text('commands.jrrp.errors.invalid_date'));
-          await utils.autoRecall(session, message);
-          return;
-        }
-        dateForCalculation = date;
+      if (duration && duration > config.maxAllowedDuration) {
+        const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.maxAllowedDuration]));
+        await utils.autoRecall(session, message);
+        return;
       }
 
-      // 计算运势
+      const muteTargetId = utils.parseTarget(target);
+      if (!muteTargetId || muteTargetId === session.userId) {
+        await utils.executeMute(session, session.userId, duration * 60 || config.mute.duration * 60, config.enableMessage);
+        return;
+      }
+
+      let muteDuration: number;
+      if (duration) {
+        muteDuration = duration * 60;
+      } else {
+        switch (config.mute.type) {
+          case MuteDurationType.STATIC:
+            muteDuration = config.mute.duration * 60;
+            break;
+          case MuteDurationType.RANDOM:
+            muteDuration = new Random().int(config.mute.min * 60, config.mute.max * 60);
+            break;
+          default:
+            muteDuration = 5 * 60;
+        }
+      }
+
+      if (!new Random().bool(config.probability)) {
+        await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
+        return;
+      }
+
+      await utils.executeMute(session, muteTargetId, muteDuration, config.enableMessage);
+    });
+
+  // jrrp命令改造为子命令结构
+  const jrrpCmd = ctx.command('jrrp')
+    .action(async ({ session }) => {
+      // 处理基础运势计算
       try {
+        const dateForCalculation = new Date();
         const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`;
 
         // 处理节日特殊消息
@@ -646,7 +619,8 @@ export async function apply(ctx: Context, config: Config) {
           return;
         }
 
-        const userNickname = session.username || 'User';
+        // 替换 userNickname，改为 at 消息
+        const atMessage = `<at id="${session.userId}"/>`;
         const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
         const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
 
@@ -657,7 +631,7 @@ export async function apply(ctx: Context, config: Config) {
           utils.setCachedScore(userDateSeed, userFortune);
         }
 
-        // 处理特殊码零分确认
+        // 处理识别码零分确认
         if (identificationCode && userFortune === 0) {
           await session.send(session.text('commands.jrrp.messages.identification_mode.zero_prompt'));
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
@@ -670,7 +644,7 @@ export async function apply(ctx: Context, config: Config) {
 
         // 格式化分数显示
         const formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
-        let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, userNickname]);
+        let fortuneResultText = session.text('commands.jrrp.messages.result', [formattedFortune, atMessage]);
 
         // 添加额外消息提示
         if (identificationCode && userFortune === 100 && jrrpIdentification.isPerfectScoreFirst(session.userId)) {
@@ -690,13 +664,82 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         await session.send(fortuneResultText);
-        return;
-
       } catch (error) {
         console.error('Daily fortune calculation failed:', error);
         const message = await session.send(session.text('commands.jrrp.messages.error'));
         await utils.autoRecall(session, message);
+      }
+    })
+
+  // 日期查询子命令
+  jrrpCmd.subcommand('.date <date:text>')
+    .action(async ({ session }, date) => {
+      const dateForCalculation = utils.parseDate(date, new Date());
+      if (!dateForCalculation) {
+        const message = await session.send(session.text('commands.jrrp.errors.invalid_date'));
+        await utils.autoRecall(session, message);
         return;
       }
-    });
+
+      // ... 复用主命令的运势计算逻辑，使用指定日期
+      // 其余逻辑与主命令相同
+    })
+
+  // 绑定识别码子命令
+  jrrpCmd.subcommand('.bind [code:string]')
+    .action(async ({ session }, code) => {
+      try {
+        // 优化消息处理逻辑
+        let responseText: string;
+
+        // 尝试删除原始命令消息
+        if (session.messageId) {
+          await utils.autoRecall(session, session.messageId, 500);
+        }
+
+        if (!code) {
+          await jrrpIdentification.removeIdentificationCode(session.userId);
+          responseText = session.text('commands.jrrp.messages.identification_mode.unbind_success');
+        } else {
+          const formattedCode = code.trim().toUpperCase();
+
+          if (!formattedCode || !jrrpIdentification.validateIdentificationCode(formattedCode)) {
+            responseText = session.text('commands.jrrp.messages.identification_mode.invalid_code');
+          } else {
+            const existingCode = await jrrpIdentification.getIdentificationCode(session.userId);
+
+            if (existingCode === formattedCode) {
+              responseText = session.text('commands.jrrp.messages.identification_mode.already_bound');
+            } else {
+              await jrrpIdentification.bindIdentificationCode(session.userId, formattedCode);
+              responseText = session.text(
+                existingCode
+                  ? 'commands.jrrp.messages.identification_mode.rebind_success'
+                  : 'commands.jrrp.messages.identification_mode.bind_success'
+              );
+            }
+          }
+        }
+
+        const message = await session.send(responseText);
+        await utils.autoRecall(session, message);
+      } catch (error) {
+        console.error('Failed to handle identification code:', error);
+        const message = await session.send(session.text('commands.jrrp.messages.error'));
+        await utils.autoRecall(session, message);
+      }
+    })
+
+  // 查找特定分数日期子命令
+  jrrpCmd.subcommand('.score <score:number>')
+    .action(async ({ session }, score) => {
+      if (score < 0 || score > 100) {
+        const message = await session.send(session.text('commands.jrrp.messages.invalid_number'));
+        await utils.autoRecall(session, message);
+        return;
+      }
+
+      const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
+      await utils.findDateForScore(session, score, identificationCode, calculateScore);
+    })
 }
