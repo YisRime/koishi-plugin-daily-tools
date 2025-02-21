@@ -27,6 +27,7 @@ config_mute:
     duration: "固定时长（分钟）"
     min: "最小时长（分钟）"
     max: "最大时长（分钟）"
+  allowedTimeRange: "允许睡眠的时间段(HH-HH)"
   maxAllowedDuration: "最大普通禁言限制（分钟）"
   enableMessage: "启用禁言提示"
   enableMuteOthers: "允许禁言他人"
@@ -78,6 +79,7 @@ commands:
       failed: "失败，请检查机器人是否有权限"
     errors:
       invalid_time: "无效的时间格式"
+      not_allowed_time: "当前时间不在允许的时间段内({0})"
 
   zanwo:
     description: "自动点赞功能"

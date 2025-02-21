@@ -27,6 +27,7 @@ config_mute:
     duration: "Fixed duration (minutes)"
     min: "Minimum duration (minutes)"
     max: "Maximum duration (minutes)"
+  allowedTimeRange: "Allowed sleep time range (HH-HH)"
   maxAllowedDuration: "Maximum normal mute limit (minutes)"
   enableMessage: "Enable mute notification"
   enableMuteOthers: "Allow muting others"
@@ -78,6 +79,7 @@ commands:
       failed: "Failed, please check if bot has permissions"
     errors:
       invalid_time: "Invalid time format"
+      not_allowed_time: "Current time is not within allowed range ({0})"
 
   zanwo:
     description: "Auto-like feature"

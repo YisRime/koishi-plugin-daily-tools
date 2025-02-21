@@ -67,6 +67,7 @@ export interface SleepConfig {
   until?: string   // until模式
   min?: number     // random模式
   max?: number     // random模式
+  allowedTimeRange?: string  // 新增允许使用时间段配置
 }
 
 export interface MuteConfig {
@@ -80,7 +81,7 @@ export interface FoolConfig {
   type: FoolMode
   date?: string
   displayMode?: DisplayMode
-  baseNumber?: number // expression模式专用
+  baseNumber?: number
 }
 
 export interface Config {
@@ -88,11 +89,12 @@ export interface Config {
   adminAccount?: string
   enableNotify?: boolean
   adminOnly?: boolean
-  enableAutoBatch?: boolean  // 新增：自动批量点赞开关
+  enableAutoBatch?: boolean
 
   // mute相关
   sleep: SleepConfig
   mute: MuteConfig
+  allowedTimeRange?: string
   maxAllowedDuration: number
   enableMessage: boolean
   enableMuteOthers: boolean
@@ -100,7 +102,7 @@ export interface Config {
 
   // jrrp相关
   choice: JrrpAlgorithm
-  identificationCode: string // 改名:specialCode -> identificationCode
+  identificationCode: string
   fool: FoolConfig
   rangeMessages?: Record<string, string>
   specialMessages?: Record<number, string>
@@ -113,7 +115,7 @@ export const Config: Schema<Config> = Schema.intersect([
     adminAccount: Schema.string(),
     enableNotify: Schema.boolean().default(true),
     adminOnly: Schema.boolean().default(true),
-    enableAutoBatch: Schema.boolean().default(false),  // 新增：自动批量点赞开关
+    enableAutoBatch: Schema.boolean().default(false),
   }).i18n({
     'zh-CN': require('./locales/zh-CN').config_autolike,
     'en-US': require('./locales/en-US').config_autolike,
@@ -156,13 +158,14 @@ export const Config: Schema<Config> = Schema.intersect([
         }),
       ]),
     ]),
+    allowedTimeRange: Schema.string().default('20-8').pattern(/^([01]?[0-9]|2[0-3])-([01]?[0-9]|2[0-3])$/),
     maxAllowedDuration: Schema.number().default(1440),
     enableMessage: Schema.boolean().default(false),
     enableMuteOthers: Schema.boolean().default(true),
     probability: Schema.number().default(0.5).min(0).max(1),
   }).i18n({
     'zh-CN': require('./locales/zh-CN').config_mute,
-    'en-US': require('./locales/zh-CN').config_mute,
+    'en-US': require('./locales/en-US').config_mute,
   }),
 
   Schema.object({
@@ -253,7 +256,6 @@ export async function apply(ctx: Context, config: Config) {
     ctx.setInterval(async () => {
       const targets = zanwoManager.getList();
       if (targets.length) {
-        // 创建一个虚拟的 session 用于执行批量点赞
         const bots = Array.from(ctx.bots.values());
         for (const bot of bots) {
           const session = bot.session();
@@ -278,7 +280,6 @@ export async function apply(ctx: Context, config: Config) {
    * 结果会被缓存以提高性能
    */
   function calculateScore(userDateSeed: string, date: Date, identificationCode: string | undefined): number {
-    // 删除旧的缓存检查，因为分数现在直接以字符串形式存储在 normalResultCache 中
     let score: number;
     if (identificationCode) {
       score = jrrpIdentification.calculateJrrpWithCode(identificationCode, date, config.identificationCode);
@@ -334,15 +335,28 @@ export async function apply(ctx: Context, config: Config) {
    * 2. until - 指定时间,计算到指定时间的时长
    * 3. random - 随机时长,在min和max之间随机
    *
-   * 所有模式都确保至少1分钟的禁言时长
    */
   ctx.command('sleep')
     .alias('jzsm', '精致睡眠')
     .channelFields(['guildId'])
     .action(async ({ session }) => {
       try {
-        let duration: number;
+        // 检查当前时间是否在允许的时间段内
         const now = new Date();
+        const currentHour = now.getHours();
+        const [startHour, endHour] = config.allowedTimeRange.split('-').map(Number);
+
+        const isTimeAllowed = startHour > endHour
+          ? (currentHour >= startHour || currentHour <= endHour)  // 跨夜的情况，如20-8
+          : (currentHour >= startHour && currentHour <= endHour); // 普通情况，如9-18
+
+        if (!isTimeAllowed) {
+          const message = await session.send(session.text('commands.sleep.errors.not_allowed_time', [config.allowedTimeRange]));
+          await utils.autoRecall(session, message);
+          return;
+        }
+
+        let duration: number;
         const sleep = config.sleep;
 
         switch (sleep.type) {
@@ -491,7 +505,7 @@ export async function apply(ctx: Context, config: Config) {
       let muteDuration: number;
 
       if (duration) {
-        muteDuration = duration * 60;  // 指定时长
+        muteDuration = duration * 60;
       } else {
         switch (config.mute.type) {
           case MuteDurationType.STATIC:
@@ -501,7 +515,7 @@ export async function apply(ctx: Context, config: Config) {
             muteDuration = randomGenerator.int(config.mute.min * 60, config.mute.max * 60);
             break;
           default:
-            muteDuration = 5 * 60; // 默认5分钟
+            muteDuration = 5 * 60;
         }
       }
 
@@ -633,8 +647,7 @@ export async function apply(ctx: Context, config: Config) {
 
         // 格式化分数显示
         const formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
-        // 修复：使用正确的方式拼接 at 消息
-        let fortuneResultText = h('at', { id: session.userId }) + ` ${session.text('commands.jrrp.messages.result', [formattedFortune])}`;
+        let fortuneResultText = h('at', { id: session.userId }) + `${session.text('commands.jrrp.messages.result', [formattedFortune])}`;
 
         // 添加额外消息提示
         if (identificationCode && userFortune === 100 && jrrpIdentification.isPerfectScoreFirst(session.userId)) {
@@ -670,19 +683,14 @@ export async function apply(ctx: Context, config: Config) {
         await utils.autoRecall(session, message);
         return;
       }
-
-      // ... 复用主命令的运势计算逻辑，使用指定日期
-      // 其余逻辑与主命令相同
     })
 
   // 绑定识别码子命令
   jrrpCmd.subcommand('.bind [code:string]')
     .action(async ({ session }, code) => {
       try {
-        // 优化消息处理逻辑
         let responseText: string;
-
-        // 尝试删除原始命令消息
+        // 删除原始命令消息
         if (session.messageId) {
           await utils.autoRecall(session, session.messageId, 500);
         }
