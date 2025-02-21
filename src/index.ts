@@ -306,10 +306,10 @@ export async function apply(ctx: Context, config: Config) {
    * 特殊代码模式下使用独立的计算逻辑
    * 结果会被缓存以提高性能
    */
-  function calculateScore(userDateSeed: string, date: Date, identificationCode: string | undefined): number {
+  async function calculateScore(userDateSeed: string, date: Date, identificationCode: string | undefined): Promise<number> {
     let score: number;
     if (identificationCode) {
-      score = jrrpIdentification.calculateJrrpWithCode(identificationCode, date, config.identificationCode);
+      score = await jrrpIdentification.calculateJrrpWithCode(identificationCode, date, config.identificationCode);
     } else {
       switch (config.choice) {
         case JrrpAlgorithm.BASIC: {
@@ -650,8 +650,8 @@ export async function apply(ctx: Context, config: Config) {
         const dateForCalculation = new Date();
         const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`;
 
-        // 处理节日特殊消息
-        if (!await utils.handleHolidayMessage(session, monthDay, config.holidayMessages)) {
+        // 修改为调用实例方法
+        if (!await jrrpIdentification.handleHolidayMessage(session, monthDay, config.holidayMessages)) {
           return;
         }
 
@@ -659,7 +659,7 @@ export async function apply(ctx: Context, config: Config) {
         const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
 
         // 直接计算分数
-        const userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
+        const userFortune = await calculateScore(userDateSeed, dateForCalculation, identificationCode);
 
         // 处理识别码零分确认
         if (identificationCode && userFortune === 0) {
@@ -765,6 +765,7 @@ export async function apply(ctx: Context, config: Config) {
       }
 
       const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
-      await utils.findDateForScore(session, score, identificationCode, calculateScore);
+      // 使用正确的异步计算分数函数类型
+      await jrrpIdentification.findDateForScore(session, score, identificationCode, calculateScore);
     })
 }
