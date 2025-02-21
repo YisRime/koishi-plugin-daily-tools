@@ -7,6 +7,21 @@ import { JrrpIdentificationMode } from './utils/JrrpIdentificationMode'
 import * as utils from './utils/utils'
 import { CONSTANTS } from './utils/utils'
 
+declare module 'koishi' {
+  interface Tables {
+    daily_user_data: DailyUserData
+  }
+}
+
+// 定义表结构
+export interface DailyUserData {
+  id: number
+  user_id: string
+  zanwo_enabled: boolean
+  identification_code?: string
+  perfect_score: boolean
+}
+
 // 插件元数据定义
 export const name = 'daily-tools'
 export const inject = {required: ['database']}
@@ -165,7 +180,7 @@ export const Config: Schema<Config> = Schema.intersect([
     probability: Schema.number().default(0.5).min(0).max(1),
   }).i18n({
     'zh-CN': require('./locales/zh-CN').config_mute,
-    'en-US': require('./locales/en-US').config_mute,
+    'en-US': require('./locales/zh-CN').config_mute,
   }),
 
   Schema.object({
@@ -241,6 +256,18 @@ export const Config: Schema<Config> = Schema.intersect([
  * @param {Config} config - 插件配置
  */
 export async function apply(ctx: Context, config: Config) {
+  // 扩展数据库
+  ctx.model.extend('daily_user_data', {
+    id: 'unsigned',
+    user_id: 'string',
+    zanwo_enabled: 'boolean',
+    identification_code: 'string',
+    perfect_score: 'boolean',
+  }, {
+    primary: 'id',
+    autoInc: true,
+  })
+
   new ConfigValidator(config).validate();
 
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'));

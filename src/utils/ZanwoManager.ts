@@ -1,6 +1,4 @@
 import { Context } from 'koishi'
-import { promises as fs } from 'fs'
-import { dirname } from 'path'
 import { CONSTANTS } from './utils'
 
 /**
@@ -10,8 +8,6 @@ import { CONSTANTS } from './utils'
 export class ZanwoManager {
   /** 存储需要自动点赞的ID集合 */
   private likeTargets: Set<string> = new Set();
-  /** 赞我数据的持久化存储路径 */
-  private readonly LIKE_DATA_PATH = 'data/zanwo.json';
 
   /**
    * 创建一个新的赞我管理器实例
@@ -22,62 +18,58 @@ export class ZanwoManager {
   }
 
   /**
-   * 从文件加载已保存的赞我列表数据
-   * @returns Promise<void>
+   * 从数据库加载点赞列表数据
    */
   private async loadData(): Promise<void> {
     try {
-      const exists = await fs.access(this.LIKE_DATA_PATH)
-        .then(() => true)
-        .catch(() => false);
-
-      if (exists) {
-        const data = JSON.parse(await fs.readFile(this.LIKE_DATA_PATH, 'utf8'));
-        if (Array.isArray(data)) {
-          this.likeTargets = new Set(data);
-        }
-      }
+      const records = await this.ctx.database.get('daily_user_data', {
+        zanwo_enabled: true
+      })
+      this.likeTargets = new Set(records.map(record => record.user_id))
     } catch (error) {
-      this.ctx.logger.error('Failed to load like data:', error);
+      this.ctx.logger.error('Failed to load zanwo data:', error)
     }
   }
 
   /**
-   * 将当前赞我列表数据保存到文件
-   * @returns Promise<void>
-   */
-  private async saveData(): Promise<void> {
-    try {
-      const dir = dirname(this.LIKE_DATA_PATH);
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(this.LIKE_DATA_PATH, JSON.stringify([...this.likeTargets], null, 2));
-    } catch (error) {
-      this.ctx.logger.error('Failed to save like data:', error);
-    }
-  }
-
-  /**
-   * 添加一个ID到赞我列表
+   * 添加一个ID到点赞列表
    * @param target - 要添加的ID
    * @returns 添加是否成功
    */
   async addQQ(target: string): Promise<boolean> {
-    if (!/^\d+$/.test(target)) return false;
-    this.likeTargets.add(target);
-    await this.saveData();
-    return true;
+    if (!/^\d+$/.test(target)) return false
+    try {
+      await this.ctx.database.upsert('daily_user_data', [{
+        user_id: target,
+        zanwo_enabled: true,
+        perfect_score: false
+      }], ['user_id'])
+
+      this.likeTargets.add(target)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /**
-   * 从赞我列表中移除一个ID
+   * 从点赞列表中移除一个ID
    * @param target - 要移除的ID
    * @returns 移除是否成功
    */
   async removeQQ(target: string): Promise<boolean> {
-    if (!this.likeTargets.has(target)) return false;
-    this.likeTargets.delete(target);
-    await this.saveData();
-    return true;
+    if (!this.likeTargets.has(target)) return false
+    try {
+      await this.ctx.database.set('daily_user_data', {
+        user_id: target
+      }, {
+        zanwo_enabled: false
+      })
+      this.likeTargets.delete(target)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /**

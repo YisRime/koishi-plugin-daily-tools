@@ -1,6 +1,4 @@
 import { Context } from 'koishi'
-import { promises as fs } from 'fs'
-import * as path from 'path'
 import { DisplayMode, FoolConfig, FoolMode } from '..';
 
 /**
@@ -14,9 +12,6 @@ export class JrrpIdentificationMode {
 
   /** 记录用户是否已获得过满分的状态 */
   private perfectScoreRecords = new Map<string, boolean>();
-
-  /** JRRP数据的持久化存储路径 */
-  private readonly JRRP_DATA_PATH = 'data/jrrp.json';
 
   /** 存储数字到表达式的映射，用于生成数学表达式 */
   private digitExpressions = new Map<number, string>();
@@ -58,33 +53,19 @@ export class JrrpIdentificationMode {
   }
 
   /**
-   * 从文件加载持久化的JRRP数据
+   * 从数据库加载JRRP数据
    */
   private async loadData(): Promise<void> {
     try {
-      const data = await fs.readFile(this.JRRP_DATA_PATH, 'utf8')
-        .then(content => JSON.parse(content))
-        .catch(() => ({ codes: {}, perfectScore: {} }));
-
-      await this.batchLoadData(data);
+      const records = await this.ctx.database.get('daily_user_data', {})
+      for (const record of records) {
+        if (record.identification_code) {
+          this.identificationCodes.set(record.user_id, record.identification_code)
+        }
+        this.perfectScoreRecords.set(record.user_id, record.perfect_score)
+      }
     } catch (error) {
-      this.ctx.logger.error('Failed to load JRRP data:', error);
-    }
-  }
-
-  /**
-   * 将JRRP数据保存到文件
-   */
-  private async saveData(): Promise<void> {
-    try {
-      await fs.mkdir(path.dirname(this.JRRP_DATA_PATH), { recursive: true });
-      const data = {
-        codes: Object.fromEntries(this.identificationCodes),
-        perfectScore: Object.fromEntries(this.perfectScoreRecords)
-      };
-      await fs.writeFile(this.JRRP_DATA_PATH, JSON.stringify(data, null, 2));
-    } catch (error) {
-      this.ctx.logger.error('Failed to save JRRP data:', error);
+      this.ctx.logger.error('Failed to load JRRP data:', error)
     }
   }
 
@@ -93,8 +74,16 @@ export class JrrpIdentificationMode {
    * @param userId 用户ID
    */
   async markPerfectScore(userId: string): Promise<void> {
-    this.perfectScoreRecords.set(userId, true);
-    await this.saveData();
+    try {
+      await this.ctx.database.upsert('daily_user_data', [{
+        user_id: userId,
+        perfect_score: true
+      }], ['user_id'])
+
+      this.perfectScoreRecords.set(userId, true)
+    } catch (error) {
+      this.ctx.logger.error('Failed to mark perfect score:', error)
+    }
   }
 
   /**
@@ -122,8 +111,16 @@ export class JrrpIdentificationMode {
    * @param code 识别码
    */
   async bindIdentificationCode(userId: string, code: string): Promise<void> {
-    this.identificationCodes.set(userId, code.trim().toUpperCase());
-    await this.saveData();
+    try {
+      await this.ctx.database.upsert('daily_user_data', [{
+        user_id: userId,
+        identification_code: code.trim().toUpperCase()
+      }], ['user_id'])
+
+      this.identificationCodes.set(userId, code.trim().toUpperCase())
+    } catch (error) {
+      this.ctx.logger.error('Failed to bind identification code:', error)
+    }
   }
 
   /**
@@ -131,8 +128,16 @@ export class JrrpIdentificationMode {
    * @param userId 用户ID
    */
   async removeIdentificationCode(userId: string): Promise<void> {
-    this.identificationCodes.delete(userId);
-    await this.saveData();
+    try {
+      await this.ctx.database.set('daily_user_data', {
+        user_id: userId
+      }, {
+        identification_code: null
+      })
+      this.identificationCodes.delete(userId)
+    } catch (error) {
+      this.ctx.logger.error('Failed to remove identification code:', error)
+    }
   }
 
   /**
