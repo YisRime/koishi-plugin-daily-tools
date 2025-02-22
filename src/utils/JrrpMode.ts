@@ -1,12 +1,12 @@
-
 import { Context } from 'koishi'
 import { DisplayMode, FoolConfig, FoolMode } from '..';
 
 /**
- * JRRP处理类
- * 用于处理用户识别码绑定和今日人品计算规则
+ * JRRP识别码模式处理类
+ * 用于处理用户识别码绑定和今日人品计算规则，包括识别码的验证、绑定、
+ * 移除以及基于识别码的JRRP计算。同时支持娱乐模式下的分数显示格式化。
  */
-export class JrrpMode {
+export class JrrpIdentificationMode {
   /** 存储用户ID和识别码的映射关系 */
   private identificationCodes = new Map<string, string>();
 
@@ -19,39 +19,11 @@ export class JrrpMode {
   /** 标记是否已经初始化过表达式映射 */
   private expressionsInitialized = false;
 
-  /**
-   * 创建JRRP特殊模式处理实例
-   * @param ctx - Koishi应用上下文，用于日志记录和其他功能
-   */
-  constructor(private ctx: Context) {
+  constructor(private readonly ctx: Context) {
     this.loadData();
   }
 
-  /**
-   * 计算指定日期在一年中的天数(1-366)
-   * @param date 日期对象
-   * @returns 一年中的第几天
-   */
-  private getDayOfYear(date: Date): number {
-    const start = new Date(date.getFullYear(), 0, 0);
-    const diff = date.getTime() - start.getTime();
-    const oneDay = 1000 * 60 * 60 * 24;
-    return Math.floor(diff / oneDay);
-  }
-
-  /**
-   * 计算字符串的64位哈希值
-   * @param str 输入字符串
-   * @returns 64位哈希值
-   */
-  private getHash(str: string): bigint {
-    let hash = BigInt(5381);
-    for (let i = 0; str.length > i; i++) {
-      hash = ((hash << BigInt(5)) ^ hash ^ BigInt(str.charCodeAt(i))) & ((BigInt(1) << BigInt(64)) - BigInt(1));
-    }
-    return hash ^ BigInt('0xa98f501bc684032f');
-  }
-
+  // === 数据管理方法 ===
   /**
    * 从数据库加载JRRP数据
    */
@@ -69,63 +41,32 @@ export class JrrpMode {
     }
   }
 
+  // === 识别码管理方法 ===
   /**
-   * 标记用户已获得满分
-   * @param userId 用户ID
-   */
-  async markPerfectScore(userId: string): Promise<void> {
-    try {
-      await this.ctx.database.upsert('daily_user_data', [{
-        user_id: userId,
-        perfect_score: true
-      }], ['user_id'])
-
-      this.perfectScoreRecords.set(userId, true)
-    } catch (error) {
-      this.ctx.logger.error('Failed to mark perfect score:', error)
-    }
-  }
-
-  /**
-   * 检查用户是否首次获得满分
-   * @param userId 用户ID
-   * @returns 是否是首次获得满分
-   */
-  isPerfectScoreFirst(userId: string): boolean {
-    return !this.perfectScoreRecords.get(userId);
-  }
-
-  /**
-   * 验证识别码格式是否正确
-   * @param code 识别码
-   * @returns 是否符合XXXX-XXXX-XXXX-XXXX格式(X为16进制数字)
+   * 验证识别码格式
    */
   validateIdentificationCode(code: string): boolean {
-    // 修改验证逻辑，使其更严格
-    return /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/i.test(code.trim());
+    return JRRP_CONSTANTS.CODE_FORMAT.test(code.trim());
   }
 
   /**
-   * 绑定用户的识别码
-   * @param userId 用户ID
-   * @param code 识别码
+   * 绑定用户识别码
    */
   async bindIdentificationCode(userId: string, code: string): Promise<void> {
     try {
+      const formattedCode = code.trim().toUpperCase();
       await this.ctx.database.upsert('daily_user_data', [{
         user_id: userId,
-        identification_code: code.trim().toUpperCase()
+        identification_code: formattedCode
       }], ['user_id'])
-
-      this.identificationCodes.set(userId, code.trim().toUpperCase())
+      this.identificationCodes.set(userId, formattedCode)
     } catch (error) {
       this.ctx.logger.error('Failed to bind identification code:', error)
     }
   }
 
   /**
-   * 移除用户的识别码
-   * @param userId 用户ID
+   * 移除用户识别码
    */
   async removeIdentificationCode(userId: string): Promise<void> {
     try {
@@ -141,20 +82,58 @@ export class JrrpMode {
   }
 
   /**
-   * 获取用户的识别码
-   * @param userId 用户ID
-   * @returns 用户绑定的识别码，未绑定则返回undefined
+   * 获取用户识别码
    */
   getIdentificationCode(userId: string): string | undefined {
     return this.identificationCodes.get(userId);
   }
 
+  // === 分数处理方法 ===
+  /**
+   * 标记用户满分状态
+   */
+  async markPerfectScore(userId: string): Promise<void> {
+    try {
+      await this.ctx.database.upsert('daily_user_data', [{
+        user_id: userId,
+        perfect_score: true
+      }], ['user_id'])
+      this.perfectScoreRecords.set(userId, true)
+    } catch (error) {
+      this.ctx.logger.error('Failed to mark perfect score:', error)
+    }
+  }
+
+  /**
+   * 检查是否首次满分
+   */
+  isPerfectScoreFirst(userId: string): boolean {
+    return !this.perfectScoreRecords.get(userId);
+  }
+
+  // === JRRP计算方法 ===
+  /**
+   * 计算指定日期在一年中的天数
+   */
+  private getDayOfYear(date: Date): number {
+    const start = new Date(date.getFullYear(), 0, 0);
+    const diff = date.getTime() - start.getTime();
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  }
+
+  /**
+   * 计算字符串的64位哈希值
+   */
+  private getHash(str: string): bigint {
+    let hash = JRRP_CONSTANTS.HASH_INITIAL;
+    for (let i = 0; str.length > i; i++) {
+      hash = ((hash << BigInt(5)) ^ hash ^ BigInt(str.charCodeAt(i))) & ((BigInt(1) << BigInt(64)) - BigInt(1));
+    }
+    return hash ^ JRRP_CONSTANTS.HASH_SEED;
+  }
+
   /**
    * 使用识别码计算JRRP值
-   * @param code 识别码
-   * @param date 日期
-   * @param password 密码
-   * @returns JRRP值(0-100)
    */
   calculateJrrpWithCode(code: string, date: Date, password: string): number {
     const dayOfYear = this.getDayOfYear(date);
@@ -186,60 +165,85 @@ export class JrrpMode {
   }
 
   /**
+   * 批量加载JRRP数据
+   * @param data JRRP数据对象
+   */
+  private async batchLoadData(data: Record<string, any>) {
+    const operations = [];
+
+    if (data.codes) {
+      operations.push(...Object.entries(data.codes)
+        .map(([userId, code]) =>
+          this.identificationCodes.set(userId, code as string)));
+    }
+
+    if (data.perfectScore) {
+      operations.push(...Object.entries(data.perfectScore)
+        .map(([userId, hadPerfectScore]) =>
+          this.perfectScoreRecords.set(userId, hadPerfectScore as boolean)));
+    }
+
+    await Promise.all(operations);
+  }
+
+  /**
    * 获取指定数字对应的数学表达式
    * @param n - 需要获取表达式的数字
    * @param baseNumber - 用于生成表达式的基础数字
    * @returns 返回对应数字的表达式字符串
    */
-  private getDigitExpr(n: number, baseNumber: number): string {
+  private async getDigitExpr(n: number, baseNumber: number): Promise<string> {
     if (!this.expressionsInitialized) {
-      const b = baseNumber;
-      this.digitExpressions.set(b, String(b));
-
-      // 设置1-9的数字表达式
-      for (let i = 1; i <= 9; i++) {
-        if (i === b) continue;
-        if (i <= 9) {
-          this.digitExpressions.set(i, String(b === i ? b : i));
-        }
-      }
-
-      // 设置需要特殊处理的数字
-      this.digitExpressions.set(0, `(${b} ^ ${b})`);
-      this.digitExpressions.set(10, `((${b} << ${b} / ${b}) + (${b} >> ${b} / ${b}))`);
-
-      // 如果基础数字不是对应数字，设置特殊表达式
-      if (b !== 1) this.digitExpressions.set(1, `(${b} / ${b})`);
-      if (b !== 2) this.digitExpressions.set(2, `(${b} >> (${b} / ${b})`);
-      if (b !== 3) this.digitExpressions.set(3, `(${b} / (${b} / ${b} << ${b} / ${b}))`);
-      if (b !== 4) this.digitExpressions.set(4, `(${b} & (${b} | (${b} / ${b})))`);
-      if (b !== 5) this.digitExpressions.set(5, `(${b} - ${b} / ${b})`);
-      if (b !== 6) this.digitExpressions.set(6, `(${b} + (${b} / ${b} >> ${b} / ${b}))`);
-      if (b !== 7) this.digitExpressions.set(7, `(${b} + ${b} / ${b})`);
-      if (b !== 8) this.digitExpressions.set(8, `(${b} + ${b} / ${b} << ${b} / ${b})`);
-      if (b !== 9) this.digitExpressions.set(9, `(${b} | (${b} >> ${b} / ${b}))`);
-
-      this.expressionsInitialized = true;
+      await this.initializeExpressions(baseNumber);
     }
-
     return this.digitExpressions.get(n) || String(n);
   }
 
   /**
-   * 使用十进制形式生成目标数值的表达式
-   * @param target - 目标数值
-   * @param baseNumber - 基础数字
-   * @returns 返回一个基于十进制的数学表达式
+   * 初始化表达式缓存
    */
-  private generateDecimalExpression(target: number, baseNumber: number): string {
+  private async initializeExpressions(baseNumber: number): Promise<void> {
+    const b = baseNumber;
+    this.digitExpressions.set(b, String(b));
+
+    // 设置1-9的数字表达式
+    for (let i = 1; i <= 9; i++) {
+      if (i === b) continue;
+      if (i <= 9) {
+        this.digitExpressions.set(i, String(b === i ? b : i));
+      }
+    }
+
+    // 设置需要特殊处理的数字
+    this.digitExpressions.set(0, `(${b} ^ ${b})`);
+    this.digitExpressions.set(10, `((${b} << ${b} / ${b}) + (${b} >> ${b} / ${b}))`);
+
+    // 如果基础数字不是对应数字，设置特殊表达式
+    if (b !== 1) this.digitExpressions.set(1, `(${b} / ${b})`);
+    if (b !== 2) this.digitExpressions.set(2, `(${b} >> (${b} / ${b})`);
+    if (b !== 3) this.digitExpressions.set(3, `(${b} / (${b} / ${b} << ${b} / ${b}))`);
+    if (b !== 4) this.digitExpressions.set(4, `(${b} & (${b} | (${b} / ${b})))`);
+    if (b !== 5) this.digitExpressions.set(5, `(${b} - ${b} / ${b})`);
+    if (b !== 6) this.digitExpressions.set(6, `(${b} + (${b} / ${b} >> ${b} / ${b}))`);
+    if (b !== 7) this.digitExpressions.set(7, `(${b} + ${b} / ${b})`);
+    if (b !== 8) this.digitExpressions.set(8, `(${b} + ${b} / ${b} << ${b} / ${b})`);
+    if (b !== 9) this.digitExpressions.set(9, `(${b} | (${b} >> ${b} / ${b}))`);
+
+    this.expressionsInitialized = true;
+  }
+
+  /**
+   * 生成十进制形式的表达式
+   */
+  private async generateDecimalExpression(target: number, baseNumber: number): Promise<string> {
     // 处理特殊情况和缓存
-    if (target <= 10) return this.getDigitExpr(target, baseNumber);
+    if (target <= 10) return await this.getDigitExpr(target, baseNumber);
     const cached = this.digitExpressions.get(target);
     if (cached) return cached;
 
     // 处理100的特殊情况
     if (target === 100) {
-      const expr = `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+      const expr = `(${await this.getDigitExpr(10, baseNumber)} * ${await this.getDigitExpr(10, baseNumber)})`;
       this.digitExpressions.set(100, expr);
       return expr;
     }
@@ -251,21 +255,21 @@ export class JrrpMode {
     let expr: string;
     if (target <= 20) {
       // 11-20的数字使用加法表示
-      expr = `(${this.getDigitExpr(10, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
+      expr = `(${await this.getDigitExpr(10, baseNumber)} + ${await this.getDigitExpr(ones, baseNumber)})`;
     } else if (ones === 0) {
       // 整十数使用乘法表示
-      expr = `(${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+      expr = `(${await this.getDigitExpr(tens, baseNumber)} * ${await this.getDigitExpr(10, baseNumber)})`;
     } else if (target <= 50) {
       // 50以内的数字使用乘加形式
-      expr = `((${this.getDigitExpr(tens, baseNumber)} * ${this.getDigitExpr(10, baseNumber)}) + ${this.getDigitExpr(ones, baseNumber)})`;
+      expr = `((${await this.getDigitExpr(tens, baseNumber)} * ${await this.getDigitExpr(10, baseNumber)}) + ${await this.getDigitExpr(ones, baseNumber)})`;
     } else {
       // 50以上的数字尝试使用更简洁的表达式
       const nearestTen = tens * 10;
       if (ones <= 5) {
-        expr = `(${this.generateDecimalExpression(nearestTen, baseNumber)} + ${this.getDigitExpr(ones, baseNumber)})`;
+        expr = `(${await this.generateDecimalExpression(nearestTen, baseNumber)} + ${await this.getDigitExpr(ones, baseNumber)})`;
       } else {
         const nextTen = (tens + 1) * 10;
-        expr = `(${this.generateDecimalExpression(nextTen, baseNumber)} - ${this.getDigitExpr(10 - ones, baseNumber)})`;
+        expr = `(${await this.generateDecimalExpression(nextTen, baseNumber)} - ${await this.getDigitExpr(10 - ones, baseNumber)})`;
       }
     }
 
@@ -275,23 +279,20 @@ export class JrrpMode {
   }
 
   /**
-   * 使用质因数分解的方式生成目标数值的表达式
-   * @param target - 目标数值
-   * @param baseNumber - 基础数字
-   * @returns 返回一个基于质因数分解的数学表达式
+   * 生成质因数分解形式的表达式
    */
-  private generatePrimeFactorsExpression(target: number, baseNumber: number): string {
+  private async generatePrimeFactorsExpression(target: number, baseNumber: number): Promise<string> {
     // 处理10以内的数字直接返回表达式
-    if (target <= 10) return this.getDigitExpr(target, baseNumber);
+    if (target <= 10) return await this.getDigitExpr(target, baseNumber);
 
     // 检查是否在预设表达式中
     const expr = this.digitExpressions.get(target);
     if (expr) return expr;
-    if (target === 100) return `(${this.getDigitExpr(10, baseNumber)} * ${this.getDigitExpr(10, baseNumber)})`;
+    if (target === 100) return `(${await this.getDigitExpr(10, baseNumber)} * ${await this.getDigitExpr(10, baseNumber)})`;
 
     // 递归分解函数
-    const decompose = (num: number): string => {
-      if (num <= 10) return this.getDigitExpr(num, baseNumber);
+    const decompose = async (num: number): Promise<string> => {
+      if (num <= 10) return await this.getDigitExpr(num, baseNumber);
 
       const predefinedExpr = this.digitExpressions.get(num);
       if (predefinedExpr) return predefinedExpr;
@@ -301,10 +302,10 @@ export class JrrpMode {
         if (num % i === 0) {
           const quotient = num / i;
           if (quotient <= 10) {
-            return `(${this.getDigitExpr(i, baseNumber)} * ${this.getDigitExpr(quotient, baseNumber)})`;
+            return `(${await this.getDigitExpr(i, baseNumber)} * ${await this.getDigitExpr(quotient, baseNumber)})`;
           }
           // 递归分解较大的因子
-          return `(${this.getDigitExpr(i, baseNumber)} * ${decompose(quotient)})`;
+          return `(${await this.getDigitExpr(i, baseNumber)} * ${await decompose(quotient)})`;
         }
       }
 
@@ -312,136 +313,149 @@ export class JrrpMode {
       const base = Math.floor(num / 10) * 10;
       const diff = num - base;
       if (diff === 0) {
-        return decompose(num / 10) + ` * ${this.getDigitExpr(10, baseNumber)}`;
+        return await decompose(num / 10) + ` * ${await this.getDigitExpr(10, baseNumber)}`;
       }
       return diff > 0
-        ? `(${decompose(base)} + ${this.getDigitExpr(diff, baseNumber)})`
-        : `(${decompose(base)} - ${this.getDigitExpr(-diff, baseNumber)})`;
+        ? `(${await decompose(base)} + ${await this.getDigitExpr(diff, baseNumber)})`
+        : `(${await decompose(base)} - ${await this.getDigitExpr(-diff, baseNumber)})`;
     };
 
-    return decompose(target);
+    return await decompose(target);
   }
 
   /**
-   * 使用混合运算生成目标数值的表达式
-   * @param target - 目标数值
-   * @param baseNumber - 基础数字
-   * @returns 返回一个包含多种运算的数学表达式
+   * 生成混合运算形式的表达式
    */
-  private generateMixedOperationsExpression(target: number, baseNumber: number): string {
-    if (target <= 10) return this.getDigitExpr(target, baseNumber);
+  private async generateMixedOperationsExpression(target: number, baseNumber: number): Promise<string> {
+    if (target <= 10) return await this.getDigitExpr(target, baseNumber);
 
     const cached = this.digitExpressions.get(target);
     if (cached) return cached;
 
-    const b = this.getDigitExpr(baseNumber, baseNumber);
+    const b = await this.getDigitExpr(baseNumber, baseNumber);
     let expr = '';
 
     if (target === 0) {
       expr = `(${b} - ${b})`;
     } else if (target === 100) {
-      expr = `(${b} * ${this.generateMixedOperationsExpression(Math.floor(100/baseNumber), baseNumber)})`;
+      expr = `(${b} * ${await this.generateMixedOperationsExpression(Math.floor(100/baseNumber), baseNumber)})`;
     } else {
       const strategies = [
         // 加减法策略 - 保持不变
-        () => {
+        async () => {
           const base = Math.floor(target / 10) * 10;
           const diff = target - base;
           return diff >= 0
-            ? `(${this.generateMixedOperationsExpression(base, baseNumber)} + ${this.getDigitExpr(diff, baseNumber)})`
-            : `(${this.generateMixedOperationsExpression(base, baseNumber)} - ${this.getDigitExpr(-diff, baseNumber)})`;
+            ? `(${await this.generateMixedOperationsExpression(base, baseNumber)} + ${await this.getDigitExpr(diff, baseNumber)})`
+            : `(${await this.generateMixedOperationsExpression(base, baseNumber)} - ${await this.getDigitExpr(-diff, baseNumber)})`;
         },
         // 改进的乘除法策略
-        () => {
+        async () => {
           // 找到最接近的能被基数整除的数
           const quotient = Math.floor(target / baseNumber);
           const remainder = target % baseNumber;
 
           if (remainder === 0) {
             // 能整除的情况
-            return `(${b} * ${this.generateMixedOperationsExpression(quotient, baseNumber)})`;
+            return `(${b} * ${await this.generateMixedOperationsExpression(quotient, baseNumber)})`;
           } else if (remainder <= baseNumber / 2) {
             // 余数较小时，使用加法
-            return `((${b} * ${this.generateMixedOperationsExpression(quotient, baseNumber)}) + ${this.getDigitExpr(remainder, baseNumber)})`;
+            return `((${b} * ${await this.generateMixedOperationsExpression(quotient, baseNumber)}) + ${await this.getDigitExpr(remainder, baseNumber)})`;
           } else {
             // 余数较大时，使用减法（向上取整）
-            return `((${b} * ${this.generateMixedOperationsExpression(quotient + 1, baseNumber)}) - ${this.getDigitExpr(baseNumber - remainder, baseNumber)})`;
+            return `((${b} * ${await this.generateMixedOperationsExpression(quotient + 1, baseNumber)}) - ${await this.getDigitExpr(baseNumber - remainder, baseNumber)})`;
           }
         },
         // 改进的位运算策略，处理余数
-        () => {
+        async () => {
           const maxShift = Math.floor(Math.log2(target));
           const base = 1 << maxShift;
           const remainder = target - base;
 
           if (remainder === 0) {
-            return `(${b} << ${this.getDigitExpr(maxShift, baseNumber)})`;
+            return `(${b} << ${await this.getDigitExpr(maxShift, baseNumber)})`;
           } else if (remainder < 0) {
             // 如果目标值小于2的幂，使用减法
-            return `((${b} << ${this.getDigitExpr(maxShift, baseNumber)}) - ${this.generateMixedOperationsExpression(-remainder, baseNumber)})`;
+            return `((${b} << ${await this.getDigitExpr(maxShift, baseNumber)}) - ${await this.generateMixedOperationsExpression(-remainder, baseNumber)})`;
           } else {
             // 如果有余数，递归处理余数部分
-            return `((${b} << ${this.getDigitExpr(maxShift, baseNumber)}) + ${this.generateMixedOperationsExpression(remainder, baseNumber)})`;
+            return `((${b} << ${await this.getDigitExpr(maxShift, baseNumber)}) + ${await this.generateMixedOperationsExpression(remainder, baseNumber)})`;
           }
         },
         // 新增：递归分解策略
-        () => {
+        async () => {
           // 尝试找到最接近的可以简单表示的数
           for (let i = 1; i <= Math.min(10, target); i++) {
             if (target % i === 0) {
               const quotient = target / i;
               if (quotient <= 10) {
-                return `(${this.getDigitExpr(i, baseNumber)} * ${this.getDigitExpr(quotient, baseNumber)})`;
+                return `(${await this.getDigitExpr(i, baseNumber)} * ${await this.getDigitExpr(quotient, baseNumber)})`;
               }
             }
           }
           // 如果找不到合适的因子，使用加减法
           const mid = Math.floor(target / 2);
-          return `(${this.generateMixedOperationsExpression(mid, baseNumber)} + ${this.generateMixedOperationsExpression(target - mid, baseNumber)})`;
+          return `(${await this.generateMixedOperationsExpression(mid, baseNumber)} + ${await this.generateMixedOperationsExpression(target - mid, baseNumber)})`;
         }
       ];
 
-      expr = strategies[Math.floor(Math.random() * strategies.length)]();
+      expr = await strategies[Math.floor(Math.random() * strategies.length)]();
     }
 
     this.digitExpressions.set(target, expr);
     return expr;
   }
 
+  // === 消息处理方法 ===
   /**
-   * 根据娱乐模式设置格式化分数显示
+   * 处理节日消息
+   * @private
    */
-  public formatScore(score: number, date: Date, foolConfig: FoolConfig): string {
-    const isValidFoolDate = () => {
-      if (!foolConfig.date) return true;
-      const [month, day] = foolConfig.date.split('-').map(Number);
-      return date.getMonth() + 1 === month && date.getDate() === day;
-    };
-
-    if (foolConfig.type !== FoolMode.ENABLED || !isValidFoolDate()) {
-      return score.toString();
-    }
-
-    try {
-      switch (foolConfig.displayMode) {
-        case DisplayMode.BINARY:
-          return score.toString(2);
-        case DisplayMode.EXPRESSION:
-          const baseNumber = foolConfig.baseNumber ?? 6;
-          const rand = Math.random();
-          if (rand < 0.33) {
-            return this.generateDecimalExpression(score, baseNumber);
-          } else if (rand < 0.66) {
-            return this.generatePrimeFactorsExpression(score, baseNumber);
-          } else {
-            return this.generateMixedOperationsExpression(score, baseNumber);
-          }
-        default:
-          return score.toString();
+  public async handleHolidayMessage(
+    session: Session,
+    monthDay: string,
+    holidayMessages: Record<string, string>
+  ): Promise<boolean> {
+    if (holidayMessages?.[monthDay]) {
+      const holidayMessage = session.text(holidayMessages[monthDay]);
+      const promptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'));
+      await autoRecall(session, promptMessage);
+      const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
+      if (!response) {
+        await session.send(session.text('commands.jrrp.messages.cancel'));
+        return false;
       }
-    } catch (error) {
-      this.ctx.logger.error('Error formatting score:', error);
-      return score.toString();
     }
+    return true;
+  }
+
+  /**
+   * 查找指定分数的未来日期
+   * @private
+   */
+  public async findDateForScore(
+    session: Session,
+    targetScore: number,
+    specialCode: string | null,
+    calculateScore: (userDateSeed: string, date: Date, specialCode: string | undefined) => Promise<number>
+  ): Promise<void> {
+    const currentDate = new Date();
+
+    for (let daysAhead = 1; daysAhead <= CONSTANTS.LIMITS.MAX_DAYS_TO_CHECK; daysAhead++) {
+      const futureDate = new Date(currentDate);
+      futureDate.setDate(currentDate.getDate() + daysAhead);
+
+      const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+      const userDateSeed = `${session.userId}-${dateStr}`;
+      const score = await calculateScore(userDateSeed, futureDate, specialCode);
+
+      if (score === targetScore) {
+        const formattedDate = `${futureDate.getFullYear().toString().slice(-2)}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+        await session.send(session.text('commands.jrrp.messages.found_date', [targetScore, formattedDate]));
+        return;
+      }
+    }
+
+    await session.send(session.text('commands.jrrp.messages.not_found', [targetScore]));
   }
 }

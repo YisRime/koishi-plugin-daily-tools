@@ -306,7 +306,7 @@ export async function apply(ctx: Context, config: Config) {
    * 特殊代码模式下使用独立的计算逻辑
    * 结果会被缓存以提高性能
    */
-  function calculateScore(userDateSeed: string, date: Date, identificationCode: string | undefined): number {
+  async function calculateScore(userDateSeed: string, date: Date, identificationCode: string | undefined): Promise<number> {
     let score: number;
     if (identificationCode) {
       score = jrrpMode.calculateJrrpWithCode(identificationCode, date, config.identificationCode);
@@ -618,7 +618,7 @@ export async function apply(ctx: Context, config: Config) {
         const identificationCode = jrrpMode.getIdentificationCode(session.userId);
 
         // 直接计算分数
-        const userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
+        const userFortune = await calculateScore(userDateSeed, dateForCalculation, identificationCode);
 
         // 处理识别码零分确认
         if (identificationCode && userFortune === 0) {
