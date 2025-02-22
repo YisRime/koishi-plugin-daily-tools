@@ -1,12 +1,12 @@
+
 import { Context } from 'koishi'
 import { DisplayMode, FoolConfig, FoolMode } from '..';
 
 /**
- * JRRP识别码模式处理类
- * 用于处理用户识别码绑定和今日人品计算规则，包括识别码的验证、绑定、
- * 移除以及基于识别码的JRRP计算。同时支持娱乐模式下的分数显示格式化。
+ * JRRP处理类
+ * 用于处理用户识别码绑定和今日人品计算规则
  */
-export class JrrpIdentificationMode {
+export class JrrpMode {
   /** 存储用户ID和识别码的映射关系 */
   private identificationCodes = new Map<string, string>();
 
@@ -183,28 +183,6 @@ export class JrrpIdentificationMode {
     const randomValue = Math.round(normalizedHash) % 1001;
 
     return randomValue >= 970 ? 100 : Math.round((randomValue / 969.0) * 99.0);
-  }
-
-  /**
-   * 批量加载JRRP数据
-   * @param data JRRP数据对象
-   */
-  private async batchLoadData(data: Record<string, any>) {
-    const operations = [];
-
-    if (data.codes) {
-      operations.push(...Object.entries(data.codes)
-        .map(([userId, code]) =>
-          this.identificationCodes.set(userId, code as string)));
-    }
-
-    if (data.perfectScore) {
-      operations.push(...Object.entries(data.perfectScore)
-        .map(([userId, hadPerfectScore]) =>
-          this.perfectScoreRecords.set(userId, hadPerfectScore as boolean)));
-    }
-
-    await Promise.all(operations);
   }
 
   /**

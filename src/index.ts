@@ -1,9 +1,9 @@
 // 基础依赖导入和插件元数据定义
 import { Context, Schema, Random, h } from 'koishi'
 import {} from 'koishi-plugin-adapter-onebot'
-import { ZanwoManager } from './utils/ZanwoManager'
-import { ConfigValidator } from './utils/ConfigValidator'
-import { JrrpIdentificationMode } from './utils/JrrpIdentificationMode'
+import { ZanwoMgr } from './utils/ZanwoMgr'
+import { ConfigValidator } from './utils/Config'
+import { JrrpMode } from './utils/JrrpMode'
 import * as utils from './utils/utils'
 import { CONSTANTS } from './utils/utils'
 
@@ -180,7 +180,7 @@ export const Config: Schema<Config> = Schema.intersect([
     probability: Schema.number().default(0.5).min(0).max(1),
   }).i18n({
     'zh-CN': require('./locales/zh-CN').config_mute,
-    'en-US': require('./locales/zh-CN').config_mute,
+    'en-US': require('./locales/en-US').config_mute,
   }),
 
   Schema.object({
@@ -273,21 +273,21 @@ export async function apply(ctx: Context, config: Config) {
   ctx.i18n.define('zh-CN', require('./locales/zh-CN'));
   ctx.i18n.define('en-US', require('./locales/en-US'));
 
-  const jrrpIdentification = new JrrpIdentificationMode(ctx);
+  const jrrpMode = new JrrpMode(ctx);
   utils.startCacheCleaner();
-  const zanwoManager = new ZanwoManager(ctx);
+  const zanwoMgr = new ZanwoMgr(ctx);
 
   // 设置自动点赞任务
   if (config.enableAutoBatch) {
     // 每24小时执行一次批量点赞
     ctx.setInterval(async () => {
-      const targets = zanwoManager.getList();
+      const targets = zanwoMgr.getList();
       if (targets.length) {
         const bots = Array.from(ctx.bots.values());
         for (const bot of bots) {
           const session = bot.session();
           if (session) {
-            await zanwoManager.sendBatchLikes(session, targets);
+            await zanwoMgr.sendBatchLikes(session, targets);
             break;
           }
         }
@@ -309,7 +309,7 @@ export async function apply(ctx: Context, config: Config) {
   function calculateScore(userDateSeed: string, date: Date, identificationCode: string | undefined): number {
     let score: number;
     if (identificationCode) {
-      score = jrrpIdentification.calculateJrrpWithCode(identificationCode, date, config.identificationCode);
+      score = jrrpMode.calculateJrrpWithCode(identificationCode, date, config.identificationCode);
     } else {
       switch (config.choice) {
         case JrrpAlgorithm.BASIC: {
@@ -429,7 +429,7 @@ export async function apply(ctx: Context, config: Config) {
   const zanwo = ctx.command('zanwo')
     .alias('赞我')
     .action(async ({ session }) => {
-      const success = await zanwoManager.sendLikes(session, session.userId);
+      const success = await zanwoMgr.sendLikes(session, session.userId);
       const message = await session.send(
         success
           ? session.text('commands.zanwo.messages.success', [config.enableNotify ? (config.adminAccount || '') : ''])
@@ -445,7 +445,7 @@ export async function apply(ctx: Context, config: Config) {
         return session.text('commands.zanwo.messages.permission_denied');
       }
 
-      const targets = zanwoManager.getList();
+      const targets = zanwoMgr.getList();
       return targets.length
         ? session.text('commands.zanwo.messages.list', [targets.join(', ')])
         : session.text('commands.zanwo.messages.no_targets');
@@ -463,7 +463,7 @@ export async function apply(ctx: Context, config: Config) {
         return session.text('commands.zanwo.messages.target_not_found');
       }
 
-      const success = await zanwoManager.addQQ(parsedTarget);
+      const success = await zanwoMgr.addQQ(parsedTarget);
       return session.text(`commands.zanwo.messages.add_${success ? 'success' : 'failed'}`, [parsedTarget]);
     });
 
@@ -479,7 +479,7 @@ export async function apply(ctx: Context, config: Config) {
         return session.text('commands.zanwo.messages.target_not_found');
       }
 
-      const success = await zanwoManager.removeQQ(parsedTarget);
+      const success = await zanwoMgr.removeQQ(parsedTarget);
       return session.text(`commands.zanwo.messages.remove_${success ? 'success' : 'failed'}`, [parsedTarget]);
     });
 
@@ -493,7 +493,7 @@ export async function apply(ctx: Context, config: Config) {
         return;
       }
 
-      const success = await zanwoManager.sendLikes(session, parsedTarget);
+      const success = await zanwoMgr.sendLikes(session, parsedTarget);
       const message = await session.send(
         success
           ? session.text('commands.zanwo.messages.success', [config.enableNotify ? (config.adminAccount || '') : ''])
@@ -513,7 +513,6 @@ export async function apply(ctx: Context, config: Config) {
   const muteCmd = ctx.command('mute [duration:number]')
     .channelFields(['guildId'])
     .action(async ({ session }, duration) => {
-      // 验证禁言时长是否超过最大限制
       if (duration && duration > config.maxAllowedDuration) {
         const message = await session.send(session.text('commands.mute.messages.errors.duration_too_long', [config.maxAllowedDuration]));
         await utils.autoRecall(session, message);
@@ -527,24 +526,7 @@ export async function apply(ctx: Context, config: Config) {
         return;
       }
 
-      // 计算实际禁言时长
-      let randomGenerator = new Random();
-      let muteDuration: number;
-
-      if (duration) {
-        muteDuration = duration * 60;
-      } else {
-        switch (config.mute.type) {
-          case MuteDurationType.STATIC:
-            muteDuration = config.mute.duration * 60;
-            break;
-          case MuteDurationType.RANDOM:
-            muteDuration = randomGenerator.int(config.mute.min * 60, config.mute.max * 60);
-            break;
-          default:
-            muteDuration = 5 * 60;
-        }
-      }
+      const muteDuration = utils.calculateMuteDuration(config.mute.type, config.mute.duration, config.mute.min, config.mute.max, duration);
 
       try {
         const validMembers = await utils.getCachedMemberList(session);
@@ -554,13 +536,13 @@ export async function apply(ctx: Context, config: Config) {
           return;
         }
 
-        if (!randomGenerator.bool(config.probability)) {
+        if (!new Random().bool(config.probability)) {
           await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
           return;
         }
 
         // 随机选择目标并执行禁言
-        const targetIndex = randomGenerator.int(0, validMembers.length - 1);
+        const targetIndex = new Random().int(0, validMembers.length - 1);
         const targetId = validMembers[targetIndex];
         await utils.executeMute(session, targetId, muteDuration, config.enableMessage);
       } catch (error) {
@@ -579,22 +561,7 @@ export async function apply(ctx: Context, config: Config) {
         return;
       }
 
-      let muteDuration: number;
-      if (duration) {
-        muteDuration = duration * 60;
-      } else {
-        switch (config.mute.type) {
-          case MuteDurationType.STATIC:
-            muteDuration = config.mute.duration * 60;
-            break;
-          case MuteDurationType.RANDOM:
-            muteDuration = new Random().int(config.mute.min * 60, config.mute.max * 60);
-            break;
-          default:
-            muteDuration = 5 * 60;
-        }
-      }
-
+      const muteDuration = utils.calculateMuteDuration(config.mute.type, config.mute.duration, config.mute.min, config.mute.max,duration);
       await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
     });
 
@@ -619,21 +586,7 @@ export async function apply(ctx: Context, config: Config) {
         return;
       }
 
-      let muteDuration: number;
-      if (duration) {
-        muteDuration = duration * 60;
-      } else {
-        switch (config.mute.type) {
-          case MuteDurationType.STATIC:
-            muteDuration = config.mute.duration * 60;
-            break;
-          case MuteDurationType.RANDOM:
-            muteDuration = new Random().int(config.mute.min * 60, config.mute.max * 60);
-            break;
-          default:
-            muteDuration = 5 * 60;
-        }
-      }
+      const muteDuration = utils.calculateMuteDuration(config.mute.type, config.mute.duration, config.mute.min, config.mute.max,duration);
 
       if (!new Random().bool(config.probability)) {
         await utils.executeMute(session, session.userId, muteDuration, config.enableMessage);
@@ -650,13 +603,19 @@ export async function apply(ctx: Context, config: Config) {
         const dateForCalculation = new Date();
         const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`;
 
-        // 处理节日特殊消息
-        if (!await utils.handleHolidayMessage(session, monthDay, config.holidayMessages)) {
-          return;
+        if (config.holidayMessages?.[monthDay]) {
+          const holidayMessage = session.text(config.holidayMessages[monthDay]);
+          const promptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'));
+          await utils.autoRecall(session, promptMessage);
+          const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
+          if (!response) {
+            await session.send(session.text('commands.jrrp.messages.cancel'));
+            return;
+          }
         }
 
         const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
-        const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
+        const identificationCode = jrrpMode.getIdentificationCode(session.userId);
 
         // 直接计算分数
         const userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
@@ -673,12 +632,12 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         // 格式化分数显示
-        const formattedFortune = jrrpIdentification.formatScore(userFortune, dateForCalculation, config.fool);
+        const formattedFortune = jrrpMode.formatScore(userFortune, dateForCalculation, config.fool);
         let fortuneResultText = h('at', { id: session.userId }) + `${session.text('commands.jrrp.messages.result', [formattedFortune])}`;
 
         // 添加额外消息提示
-        if (identificationCode && userFortune === 100 && jrrpIdentification.isPerfectScoreFirst(session.userId)) {
-          await jrrpIdentification.markPerfectScore(session.userId);
+        if (identificationCode && userFortune === 100 && jrrpMode.isPerfectScoreFirst(session.userId)) {
+          await jrrpMode.markPerfectScore(session.userId);
           fortuneResultText += session.text(config.specialMessages[userFortune]) +
                         '\n' + session.text('commands.jrrp.messages.identification_mode.perfect_score_first');
         } else if (config.specialMessages?.[userFortune]) {
@@ -723,20 +682,20 @@ export async function apply(ctx: Context, config: Config) {
         }
 
         if (!code) {
-          await jrrpIdentification.removeIdentificationCode(session.userId);
+          await jrrpMode.removeIdentificationCode(session.userId);
           responseText = session.text('commands.jrrp.messages.identification_mode.unbind_success');
         } else {
           const formattedCode = code.trim().toUpperCase();
 
-          if (!formattedCode || !jrrpIdentification.validateIdentificationCode(formattedCode)) {
+          if (!formattedCode || !jrrpMode.validateIdentificationCode(formattedCode)) {
             responseText = session.text('commands.jrrp.messages.identification_mode.invalid_code');
           } else {
-            const existingCode = await jrrpIdentification.getIdentificationCode(session.userId);
+            const existingCode = await jrrpMode.getIdentificationCode(session.userId);
 
             if (existingCode === formattedCode) {
               responseText = session.text('commands.jrrp.messages.identification_mode.already_bound');
             } else {
-              await jrrpIdentification.bindIdentificationCode(session.userId, formattedCode);
+              await jrrpMode.bindIdentificationCode(session.userId, formattedCode);
               responseText = session.text(
                 existingCode
                   ? 'commands.jrrp.messages.identification_mode.rebind_success'
@@ -764,7 +723,24 @@ export async function apply(ctx: Context, config: Config) {
         return;
       }
 
-      const identificationCode = jrrpIdentification.getIdentificationCode(session.userId);
-      await utils.findDateForScore(session, score, identificationCode, calculateScore);
+      const identificationCode = jrrpMode.getIdentificationCode(session.userId);
+      const currentDate = new Date();
+
+      for (let daysAhead = 1; daysAhead <= CONSTANTS.LIMITS.MAX_DAYS_TO_CHECK; daysAhead++) {
+        const futureDate = new Date(currentDate);
+        futureDate.setDate(currentDate.getDate() + daysAhead);
+
+        const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+        const userDateSeed = `${session.userId}-${dateStr}`;
+        const calculatedScore = calculateScore(userDateSeed, futureDate, identificationCode);
+
+        if (calculatedScore === score) {
+          const formattedDate = `${futureDate.getFullYear().toString().slice(-2)}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
+          await session.send(session.text('commands.jrrp.messages.found_date', [score, formattedDate]));
+          return;
+        }
+      }
+
+      await session.send(session.text('commands.jrrp.messages.not_found', [score]));
     })
 }

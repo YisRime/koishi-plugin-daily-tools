@@ -3,7 +3,8 @@
  * @module utils
  */
 
-import { Session, h } from 'koishi';
+import { Session, h, Random } from 'koishi';
+import { MuteDurationType } from '../index';
 
 /**
  * 常量配置对象，包含各种系统配置值
@@ -229,66 +230,6 @@ export async function executeMute(session: Session, targetId: string, muteDurati
 }
 
 /**
- * 处理特定分数的日期查找
- * @param {Session} session - 会话上下文
- * @param {number} targetScore - 要查找的目标分数
- * @param {string|null} specialCode - 特殊计算代码，用于自定义计算逻辑
- * @param {Function} calculateScore - 分数计算函数
- * @param {string} calculateScore.userDateSeed - 用户日期种子字符串
- * @param {Date} calculateScore.date - 日期对象
- * @param {string|undefined} calculateScore.specialCode - 特殊计算代码
- * @returns {Promise<void>}
- * @description 在未来一年内查找可能出现目标分数的日期
- */
-export async function findDateForScore(
-  session: Session,
-  targetScore: number,
-  specialCode: string | null,
-  calculateScore: (userDateSeed: string, date: Date, specialCode: string | undefined) => number
-): Promise<void> {
-  const currentDate = new Date();
-
-  for (let daysAhead = 1; daysAhead <= CONSTANTS.LIMITS.MAX_DAYS_TO_CHECK; daysAhead++) {
-    const futureDate = new Date(currentDate);
-    futureDate.setDate(currentDate.getDate() + daysAhead);
-
-    const dateStr = `${futureDate.getFullYear()}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-    const userDateSeed = `${session.userId}-${dateStr}`;
-    const score = calculateScore(userDateSeed, futureDate, specialCode);
-
-    if (score === targetScore) {
-      const formattedDate = `${futureDate.getFullYear().toString().slice(-2)}-${String(futureDate.getMonth() + 1).padStart(2, '0')}-${String(futureDate.getDate()).padStart(2, '0')}`;
-      await session.send(session.text('commands.jrrp.messages.found_date', [targetScore, formattedDate]));
-      return;
-    }
-  }
-
-  await session.send(session.text('commands.jrrp.messages.not_found', [targetScore]));
-}
-
-/**
- * 检查并处理节日消息
- * @param {Session} session - 会话上下文
- * @param {string} monthDay - 月日字符串，格式为 MM-DD
- * @param {Record<string, string>} holidayMessages - 节日消息配置对象，键为月日，值为消息文本
- * @returns {Promise<boolean>} 如果用户确认继续则返回 true，否则返回 false
- * @description 检查特定日期是否有节日消息，并处理用户交互
- */
-export async function handleHolidayMessage(session: Session, monthDay: string, holidayMessages: Record<string, string>): Promise<boolean> {
-  if (holidayMessages?.[monthDay]) {
-    const holidayMessage = session.text(holidayMessages[monthDay]);
-    const promptMessage = await session.send(holidayMessage + '\n' + session.text('commands.jrrp.messages.prompt'));
-    await autoRecall(session, promptMessage);
-    const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
-    if (!response) {
-      await session.send(session.text('commands.jrrp.messages.cancel'));
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
  * 解析目标用户ID
  * @param {string} input - 输入文本，可以是@消息或直接的用户ID
  * @returns {string|null} 解析出的用户ID，解析失败则返回null
@@ -330,4 +271,33 @@ function setCached<T>(key: string, data: T, map: Map<string, CacheEntry<T>>, exp
     data,
     expiry: Date.now() + expiry
   });
+}
+
+/**
+ * 计算禁言时长
+ * @param {MuteDurationType} type - 禁言类型
+ * @param {number} duration - 固定时长
+ * @param {number} min - 最小时长
+ * @param {number} max - 最大时长
+ * @param {number} [specifiedDuration] - 指定的时长
+ * @returns {number} 最终计算的禁言时长（秒）
+ */
+export function calculateMuteDuration(
+  type: MuteDurationType,
+  duration: number,
+  min: number,
+  max: number,
+  specifiedDuration?: number
+): number {
+  if (specifiedDuration) {
+    return specifiedDuration * 60;
+  }
+  switch (type) {
+    case MuteDurationType.STATIC:
+      return duration * 60;
+    case MuteDurationType.RANDOM:
+      return new Random().int(min * 60, max * 60);
+    default:
+      return 5 * 60;
+  }
 }

@@ -1,3 +1,4 @@
+
 import { Context } from 'koishi'
 import { CONSTANTS } from './utils'
 
@@ -5,7 +6,7 @@ import { CONSTANTS } from './utils'
  * 赞我管理器
  * 用于管理自动点赞功能的账号列表，包括数据的持久化存储和点赞操作
  */
-export class ZanwoManager {
+export class ZanwoMgr {
   /** 存储需要自动点赞的ID集合 */
   private likeTargets: Set<string> = new Set();
 
