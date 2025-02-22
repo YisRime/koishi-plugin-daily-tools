@@ -1,4 +1,5 @@
-import { Config, SleepMode } from '../index'
+
+import { Config as PluginConfig, SleepMode } from '../index'
 
 /**
  * 配置验证器类，用于验证插件配置的有效性
@@ -8,7 +9,7 @@ export class ConfigValidator {
    * 创建一个配置验证器实例
    * @param config 需要验证的配置对象
    */
-  constructor(private config: Config) {}
+  constructor(private config: PluginConfig) {}
 
   /**
    * 验证时间字符串是否符合 HH:MM 24小时制格式

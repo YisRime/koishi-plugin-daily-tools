@@ -3,7 +3,8 @@
  * @module utils
  */
 
-import { Session, h } from 'koishi';
+import { Session, h, Random } from 'koishi';
+import { MuteDurationType } from '../index';
 
 /**
  * 常量配置对象，包含各种系统配置值
@@ -270,4 +271,33 @@ function setCached<T>(key: string, data: T, map: Map<string, CacheEntry<T>>, exp
     data,
     expiry: Date.now() + expiry
   });
+}
+
+/**
+ * 计算禁言时长
+ * @param {MuteDurationType} type - 禁言类型
+ * @param {number} duration - 固定时长
+ * @param {number} min - 最小时长
+ * @param {number} max - 最大时长
+ * @param {number} [specifiedDuration] - 指定的时长
+ * @returns {number} 最终计算的禁言时长（秒）
+ */
+export function calculateMuteDuration(
+  type: MuteDurationType,
+  duration: number,
+  min: number,
+  max: number,
+  specifiedDuration?: number
+): number {
+  if (specifiedDuration) {
+    return specifiedDuration * 60;
+  }
+  switch (type) {
+    case MuteDurationType.STATIC:
+      return duration * 60;
+    case MuteDurationType.RANDOM:
+      return new Random().int(min * 60, max * 60);
+    default:
+      return 5 * 60;
+  }
 }

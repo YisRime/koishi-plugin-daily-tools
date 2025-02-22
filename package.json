@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-daily-tools",
   "description": "每天都会用到的小工具，内容丰富，高度可自定义",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
   ],

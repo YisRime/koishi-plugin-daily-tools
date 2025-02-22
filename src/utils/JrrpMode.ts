@@ -1,40 +1,22 @@
-import { Session, Context } from 'koishi'
-import { DisplayMode, FoolConfig, FoolMode } from '..'
-import { CONSTANTS } from './utils'
-import { autoRecall } from './utils'
-
-/**
- * 表达式生成策略类型定义
- */
-type ExpressionStrategy = (target: number, baseNumber: number) => string;
-
-/**
- * JRRP识别码模式常量定义
- */
-const JRRP_CONSTANTS = {
-  /** 表达式缓存大小限制 */
-  MAX_EXPR_CACHE_SIZE: 1000,
-  /** 哈希种子值 */
-  HASH_SEED: BigInt('0xa98f501bc684032f'),
-  /** 哈希初始值 */
-  HASH_INITIAL: BigInt(5381),
-  /** 识别码格式正则 */
-  CODE_FORMAT: /^[0-9A-F]{4}(-[0-9A-F]{4}){3}$/i
-} as const;
+import { Context } from 'koishi'
+import { DisplayMode, FoolConfig, FoolMode } from '..';
 
 /**
  * JRRP识别码模式处理类
- * 处理用户识别码绑定和今日人品计算规则
+ * 用于处理用户识别码绑定和今日人品计算规则，包括识别码的验证、绑定、
+ * 移除以及基于识别码的JRRP计算。同时支持娱乐模式下的分数显示格式化。
  */
 export class JrrpIdentificationMode {
-  // === 私有属性 ===
-  /** 用户识别码映射 */
-  private readonly identificationCodes = new Map<string, string>();
-  /** 满分记录映射 */
-  private readonly perfectScoreRecords = new Map<string, boolean>();
-  /** 数字表达式缓存 */
-  private readonly digitExpressions = new Map<number, string>();
-  /** 表达式缓存初始化标记 */
+  /** 存储用户ID和识别码的映射关系 */
+  private identificationCodes = new Map<string, string>();
+
+  /** 记录用户是否已获得过满分的状态 */
+  private perfectScoreRecords = new Map<string, boolean>();
+
+  /** 存储数字到表达式的映射，用于生成数学表达式 */
+  private digitExpressions = new Map<number, string>();
+
+  /** 标记是否已经初始化过表达式映射 */
   private expressionsInitialized = false;
 
   constructor(private readonly ctx: Context) {
@@ -182,55 +164,33 @@ export class JrrpIdentificationMode {
     return randomValue >= 970 ? 100 : Math.round((randomValue / 969.0) * 99.0);
   }
 
-  // === 分数格式化方法 ===
   /**
-   * 格式化分数显示
+   * 批量加载JRRP数据
+   * @param data JRRP数据对象
    */
-  public async formatScore(score: number, date: Date, foolConfig: FoolConfig): Promise<string> {
-    if (!this.isFoolModeActive(foolConfig, date)) {
-      return score.toString();
+  private async batchLoadData(data: Record<string, any>) {
+    const operations = [];
+
+    if (data.codes) {
+      operations.push(...Object.entries(data.codes)
+        .map(([userId, code]) =>
+          this.identificationCodes.set(userId, code as string)));
     }
 
-    try {
-      return await this.getFormattedScore(score, foolConfig);
-    } catch (error) {
-      this.ctx.logger.error('Error formatting score:', error);
-      return score.toString();
+    if (data.perfectScore) {
+      operations.push(...Object.entries(data.perfectScore)
+        .map(([userId, hadPerfectScore]) =>
+          this.perfectScoreRecords.set(userId, hadPerfectScore as boolean)));
     }
+
+    await Promise.all(operations);
   }
 
   /**
-   * 检查娱乐模式是否激活
-   */
-  private isFoolModeActive(foolConfig: FoolConfig, date: Date): boolean {
-    if (foolConfig.type !== FoolMode.ENABLED) return false;
-    if (!foolConfig.date) return true;
-
-    const [month, day] = foolConfig.date.split('-').map(Number);
-    return date.getMonth() + 1 === month && date.getDate() === day;
-  }
-
-  /**
-   * 获取格式化的分数
-   */
-  private async getFormattedScore(score: number, foolConfig: FoolConfig): Promise<string> {
-    if (foolConfig.displayMode === DisplayMode.BINARY) {
-      return score.toString(2);
-    }
-
-    const baseNumber = foolConfig.baseNumber ?? 6;
-    const strategies: Array<(target: number, base: number) => Promise<string>> = [
-      this.generateDecimalExpression.bind(this),
-      this.generatePrimeFactorsExpression.bind(this),
-      this.generateMixedOperationsExpression.bind(this)
-    ];
-
-    return await strategies[Math.floor(Math.random() * strategies.length)](score, baseNumber);
-  }
-
-  // === 表达式生成方法 ===
-  /**
-   * 获取数字的基础表达式
+   * 获取指定数字对应的数学表达式
+   * @param n - 需要获取表达式的数字
+   * @param baseNumber - 用于生成表达式的基础数字
+   * @returns 返回对应数字的表达式字符串
    */
   private async getDigitExpr(n: number, baseNumber: number): Promise<string> {
     if (!this.expressionsInitialized) {
