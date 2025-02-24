@@ -125,7 +125,6 @@ commands:
       jrrp - 查看今日人品
       jrrp.date <日期> - 查看指定日期运势
       jrrp.score <分数> - 查找特定分数出现的日期
-      jrrp.bind [识别码] - 绑定/解绑识别码
     messages:
       result: "你今天的人品值是：{0}"
       prompt: "你要看看今天的人品吗？"

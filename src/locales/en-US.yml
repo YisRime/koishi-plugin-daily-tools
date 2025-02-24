@@ -124,7 +124,6 @@ commands:
       jrrp - Check today's luck
       jrrp.date <date> - Check luck for specific date
       jrrp.score <score> - Find date for specific score
-      jrrp.bind [code] - Bind/Unbind identification code
     options:
       d: "Specify date (YYYY-MM-DD or MM-DD)"
     messages:

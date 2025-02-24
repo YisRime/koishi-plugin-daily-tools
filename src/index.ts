@@ -82,7 +82,7 @@ export interface SleepConfig {
   until?: string   // until模式
   min?: number     // random模式
   max?: number     // random模式
-  allowedTimeRange?: string  // 新增允许使用时间段配置
+  allowedTimeRange?: string  // 允许使用时间段
 }
 
 export interface MuteConfig {
@@ -189,7 +189,7 @@ export const Config: Schema<Config> = Schema.intersect([
       Schema.const(JrrpAlgorithm.GAUSSIAN),
       Schema.const(JrrpAlgorithm.LINEAR),
     ]).default(JrrpAlgorithm.BASIC),
-    identificationCode: Schema.string().default('CODE').role('secret'), // 改名
+    identificationCode: Schema.string().default('CODE').role('secret'),
     fool: Schema.intersect([
       Schema.object({
         type: Schema.union([FoolMode.DISABLED, FoolMode.ENABLED]),
@@ -279,7 +279,6 @@ export async function apply(ctx: Context, config: Config) {
 
   // 设置自动点赞任务
   if (config.enableAutoBatch) {
-    // 每24小时执行一次批量点赞
     ctx.setInterval(async () => {
       const targets = zanwoMgr.getList();
       if (targets.length) {
@@ -303,8 +302,7 @@ export async function apply(ctx: Context, config: Config) {
    * 2. gaussian - 高斯分布算法,生成更符合正态分布的分数
    * 3. linear - 线性同余算法,生成均匀分布的分数
    *
-   * 特殊代码模式下使用独立的计算逻辑
-   * 结果会被缓存以提高性能
+   * 识别码模式下使用独立的计算逻辑
    */
   function calculateScore(userDateSeed: string, date: Date, identificationCode: string | undefined): number {
     let score: number;
@@ -374,7 +372,7 @@ export async function apply(ctx: Context, config: Config) {
         const [startHour, endHour] = config.allowedTimeRange.split('-').map(Number);
 
         const isTimeAllowed = startHour > endHour
-          ? (currentHour >= startHour || currentHour <= endHour)  // 跨夜的情况，如20-8
+          ? (currentHour >= startHour || currentHour <= endHour)  // 跨夜情况，如20-8
           : (currentHour >= startHour && currentHour <= endHour); // 普通情况，如9-18
 
         if (!isTimeAllowed) {
@@ -596,7 +594,6 @@ export async function apply(ctx: Context, config: Config) {
       await utils.executeMute(session, muteTargetId, muteDuration, config.enableMessage);
     });
 
-  // jrrp命令改造为子命令结构
   const jrrpCmd = ctx.command('jrrp')
     .action(async ({ session }) => {
       try {
@@ -616,11 +613,9 @@ export async function apply(ctx: Context, config: Config) {
 
         const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
         const identificationCode = jrrpMode.getIdentificationCode(session.userId);
-
-        // 直接计算分数
         const userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
 
-        // 处理识别码零分确认
+        // 处理零分确认
         if (identificationCode && userFortune === 0) {
           await session.send(session.text('commands.jrrp.messages.identification_mode.zero_prompt'));
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
@@ -635,7 +630,7 @@ export async function apply(ctx: Context, config: Config) {
         const formattedFortune = jrrpMode.formatScore(userFortune, dateForCalculation, config.fool);
         let fortuneResultText = h('at', { id: session.userId }) + `${session.text('commands.jrrp.messages.result', [formattedFortune])}`;
 
-        // 添加额外消息提示
+        // 额外消息提示
         if (identificationCode && userFortune === 100 && jrrpMode.isPerfectScoreFirst(session.userId)) {
           await jrrpMode.markPerfectScore(session.userId);
           fortuneResultText += session.text(config.specialMessages[userFortune]) +
@@ -676,7 +671,6 @@ export async function apply(ctx: Context, config: Config) {
     .action(async ({ session }, code) => {
       try {
         let responseText: string;
-        // 删除原始命令消息
         if (session.messageId) {
           await utils.autoRecall(session, session.messageId, 500);
         }
