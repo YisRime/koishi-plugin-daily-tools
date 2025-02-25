@@ -353,6 +353,61 @@ export async function apply(ctx: Context, config: Config) {
   }
 
   /**
+   * 格式化JRRP结果消息
+   * @param session - 会话上下文
+   * @param dateForCalculation - 计算用的日期
+   * @param config - 插件配置
+   * @param jrrpMode - JRRP模式实例
+   * @param skipConfirm - 是否跳过零分确认
+   * @returns 格式化后的消息文本，如果需要零分确认则返回null
+   */
+  async function formatJrrpMessage(
+    session: any,
+    dateForCalculation: Date,
+    config: Config,
+    jrrpMode: JrrpMode,
+    skipConfirm = false
+  ): Promise<string | null> {
+    const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`;
+    const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
+    const identificationCode = jrrpMode.getIdentificationCode(session.userId);
+    const userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
+
+    // 零分确认检查 - 只有在不跳过确认且需要确认时才返回null
+    if (!skipConfirm && identificationCode && userFortune === 0) {
+      return null;
+    }
+
+    // 格式化分数显示
+    const formattedFortune = jrrpMode.formatScore(userFortune, dateForCalculation, config.fool);
+    let fortuneResultText = h('at', { id: session.userId }) + `${session.text('commands.jrrp.messages.result', [formattedFortune])}`;
+
+    // 额外消息提示
+    if (identificationCode && userFortune === 100 && jrrpMode.isPerfectScoreFirst(session.userId)) {
+      await jrrpMode.markPerfectScore(session.userId);
+      fortuneResultText += session.text(config.specialMessages[userFortune]) +
+        '\n' + session.text('commands.jrrp.messages.identification_mode.perfect_score_first');
+    } else if (config.specialMessages?.[userFortune]) {
+      fortuneResultText += session.text(config.specialMessages[userFortune]);
+    } else if (config.rangeMessages) {
+      for (const [range, message] of Object.entries(config.rangeMessages)) {
+        const [min, max] = range.split('-').map(Number);
+        if (userFortune >= min && userFortune <= max) {
+          fortuneResultText += session.text(message);
+          break;
+        }
+      }
+    }
+
+    // 添加节日消息
+    if (config.holidayMessages?.[monthDay]) {
+      fortuneResultText += '\n' + session.text(config.holidayMessages[monthDay]);
+    }
+
+    return fortuneResultText;
+  }
+
+  /**
    * 精致睡眠命令处理
    * @description
    * 三种睡眠模式:
@@ -611,12 +666,10 @@ export async function apply(ctx: Context, config: Config) {
           }
         }
 
-        const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
-        const identificationCode = jrrpMode.getIdentificationCode(session.userId);
-        const userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
+        let fortuneResultText = await formatJrrpMessage(session, dateForCalculation, config, jrrpMode);
 
         // 处理零分确认
-        if (identificationCode && userFortune === 0) {
+        if (fortuneResultText === null) {
           await session.send(session.text('commands.jrrp.messages.identification_mode.zero_prompt'));
           const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
           if (!response || response.toLowerCase() !== 'y') {
@@ -624,30 +677,12 @@ export async function apply(ctx: Context, config: Config) {
             await utils.autoRecall(session, message);
             return;
           }
+          fortuneResultText = await formatJrrpMessage(session, dateForCalculation, config, jrrpMode, true);
         }
 
-        // 格式化分数显示
-        const formattedFortune = jrrpMode.formatScore(userFortune, dateForCalculation, config.fool);
-        let fortuneResultText = h('at', { id: session.userId }) + `${session.text('commands.jrrp.messages.result', [formattedFortune])}`;
-
-        // 额外消息提示
-        if (identificationCode && userFortune === 100 && jrrpMode.isPerfectScoreFirst(session.userId)) {
-          await jrrpMode.markPerfectScore(session.userId);
-          fortuneResultText += session.text(config.specialMessages[userFortune]) +
-                        '\n' + session.text('commands.jrrp.messages.identification_mode.perfect_score_first');
-        } else if (config.specialMessages?.[userFortune]) {
-          fortuneResultText += session.text(config.specialMessages[userFortune]);
-        } else if (config.rangeMessages) {
-          for (const [range, message] of Object.entries(config.rangeMessages)) {
-            const [min, max] = range.split('-').map(Number);
-            if (userFortune >= min && userFortune <= max) {
-              fortuneResultText += session.text(message);
-              break;
-            }
-          }
+        if (fortuneResultText) {
+          await session.send(fortuneResultText);
         }
-
-        await session.send(fortuneResultText);
       } catch (error) {
         console.error('Daily fortune calculation failed:', error);
         const message = await session.send(session.text('commands.jrrp.messages.error'));
@@ -673,34 +708,23 @@ export async function apply(ctx: Context, config: Config) {
       }
 
       try {
-        const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`;
-        const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
-        const identificationCode = jrrpMode.getIdentificationCode(session.userId);
-        const userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
+        let fortuneResultText = await formatJrrpMessage(session, dateForCalculation, config, jrrpMode);
 
-        // 格式化分数显示
-        const formattedFortune = jrrpMode.formatScore(userFortune, dateForCalculation, config.fool);
-        let fortuneResultText = h('at', { id: session.userId }) + `${session.text('commands.jrrp.messages.result', [formattedFortune])}`;
-
-        // 添加额外消息提示
-        if (config.specialMessages?.[userFortune]) {
-          fortuneResultText += session.text(config.specialMessages[userFortune]);
-        } else if (config.rangeMessages) {
-          for (const [range, message] of Object.entries(config.rangeMessages)) {
-            const [min, max] = range.split('-').map(Number);
-            if (userFortune >= min && userFortune <= max) {
-              fortuneResultText += session.text(message);
-              break;
-            }
+        // 处理零分确认
+        if (fortuneResultText === null) {
+          await session.send(session.text('commands.jrrp.messages.identification_mode.zero_prompt'));
+          const response = await session.prompt(CONSTANTS.TIMEOUTS.PROMPT);
+          if (!response || response.toLowerCase() !== 'y') {
+            const message = await session.send(session.text('commands.jrrp.messages.cancel'));
+            await utils.autoRecall(session, message);
+            return;
           }
+          fortuneResultText = await formatJrrpMessage(session, dateForCalculation, config, jrrpMode, true);
         }
 
-        // 添加节日消息
-        if (config.holidayMessages?.[monthDay]) {
-          fortuneResultText += '\n' + session.text(config.holidayMessages[monthDay]);
+        if (fortuneResultText) {
+          await session.send(fortuneResultText);
         }
-
-        await session.send(fortuneResultText);
       } catch (error) {
         const message = await session.send(session.text('commands.jrrp.messages.error'));
         await utils.autoRecall(session, message);
