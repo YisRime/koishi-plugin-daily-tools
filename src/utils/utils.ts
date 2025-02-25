@@ -154,8 +154,10 @@ export function hashCode(inputStr: string): number { // 改进：str -> inputStr
  * @description 支持多种日期格式，自动处理两位年份，并进行严格的日期有效性验证
  */
 export function parseDate(dateStr: string, defaultDate: Date): Date | null {
+  if (!dateStr?.trim()) return null;
+
   // 标准化日期字符串，支持点号和斜杠分隔
-  const normalized = dateStr.replace(/[\s.\/]/g, '-').replace(/-+/g, '-');
+  const normalized = dateStr.trim().replace(/[\s.\/]/g, '-').replace(/-+/g, '-');
   if (!/^[\d-]+$/.test(normalized)) return null;
 
   // 处理可能的前导零

@@ -657,14 +657,55 @@ export async function apply(ctx: Context, config: Config) {
 
   // 日期查询子命令
   jrrpCmd.subcommand('.date <date:text>')
+    .usage('输入日期格式：YYYY-MM-DD 或 MM-DD')
     .action(async ({ session }, date) => {
+      if (!date?.trim()) {
+        const message = await session.send(session.text('commands.jrrp.errors.invalid_date'));
+        await utils.autoRecall(session, message);
+        return;
+      }
+
       const dateForCalculation = utils.parseDate(date, new Date());
       if (!dateForCalculation) {
         const message = await session.send(session.text('commands.jrrp.errors.invalid_date'));
         await utils.autoRecall(session, message);
         return;
       }
-    })
+
+      try {
+        const monthDay = `${String(dateForCalculation.getMonth() + 1).padStart(2, '0')}-${String(dateForCalculation.getDate()).padStart(2, '0')}`;
+        const userDateSeed = `${session.userId}-${dateForCalculation.getFullYear()}-${monthDay}`;
+        const identificationCode = jrrpMode.getIdentificationCode(session.userId);
+        const userFortune = calculateScore(userDateSeed, dateForCalculation, identificationCode);
+
+        // 格式化分数显示
+        const formattedFortune = jrrpMode.formatScore(userFortune, dateForCalculation, config.fool);
+        let fortuneResultText = h('at', { id: session.userId }) + `${session.text('commands.jrrp.messages.result', [formattedFortune])}`;
+
+        // 添加额外消息提示
+        if (config.specialMessages?.[userFortune]) {
+          fortuneResultText += session.text(config.specialMessages[userFortune]);
+        } else if (config.rangeMessages) {
+          for (const [range, message] of Object.entries(config.rangeMessages)) {
+            const [min, max] = range.split('-').map(Number);
+            if (userFortune >= min && userFortune <= max) {
+              fortuneResultText += session.text(message);
+              break;
+            }
+          }
+        }
+
+        // 添加节日消息
+        if (config.holidayMessages?.[monthDay]) {
+          fortuneResultText += '\n' + session.text(config.holidayMessages[monthDay]);
+        }
+
+        await session.send(fortuneResultText);
+      } catch (error) {
+        const message = await session.send(session.text('commands.jrrp.messages.error'));
+        await utils.autoRecall(session, message);
+      }
+    });
 
   // 绑定识别码子命令
   jrrpCmd.subcommand('.bind [code:string]')

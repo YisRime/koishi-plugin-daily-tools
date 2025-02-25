@@ -2,7 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/koishi-plugin-daily-tools?style=flat-square)](https://www.npmjs.com/package/koishi-plugin-daily-tools)
 
-每日小工具，提供限定版今日人品(jrrp)，精致睡眠，随机禁言以及点赞功能，含有隐藏功能等待发掘
+每日小工具，提供“限定版”今日人品，精致睡眠，随机禁言以及自动点赞功能
 
 ## 功能特性
 
