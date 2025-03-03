@@ -41,7 +41,7 @@ config_jrrp:
       - "取模算法"
       - "正态分布算法"
       - "线性同余算法"
-  identificationCode: "识别码验证密钥——用于计算JRRP"
+  identificationCode: "识别码计算密钥"
   fool:
     type:
       $desc: "愚人模式"
@@ -70,9 +70,9 @@ config_range:
 
 commands:
   sleep:
-    description: "精致睡眠，禁言指定时长"
+    description: "精致睡眠"
     usage: |-
-      自动禁言指定时长
+      禁言指定时长
       支持三种模式：固定时长、指定时间、随机时长
     messages:
       success: "晚安，快去睡觉吧，祝你好梦"
@@ -82,14 +82,14 @@ commands:
       not_allowed_time: "当前时间不在允许的时间段内({0})"
 
   zanwo:
-    description: "自动点赞功能"
+    description: "点赞"
     usage: |-
-      发送命令让机器人给你点赞，上限50个赞
+      自动给你点赞
       zanwo - 为自己点赞
+      zanwo.user @用户 - 为指定用户点赞
       zanwo.list - 查看点赞列表
       zanwo.add @用户 - 添加到点赞列表
       zanwo.remove @用户 - 从点赞列表移除
-      zanwo.user @用户 - 为指定用户点赞
     messages:
       list: "当前点赞列表：{0}"
       add_success: "已添加 {0} 到点赞列表"
@@ -103,12 +103,11 @@ commands:
       permission_denied: "仅管理员可用"
 
   mute:
-    description: "禁言功能"
+    description: "随机禁言"
     usage: |-
-      mute [时长] - 随机禁言（自己或他人）
+      mute [时长] - 随机禁言
       mute.me [时长] - 禁言自己
       mute.user @用户 [时长] - 禁言指定用户
-      时长单位为分钟，不指定则使用配置的默认值
     messages:
       errors:
         no_valid_members: "无可禁言成员"
@@ -120,11 +119,11 @@ commands:
         others_disabled: "已禁用禁言他人功能"
 
   jrrp:
-    description: "今日人品功能"
+    description: "今日人品"
     usage: |-
       jrrp - 查看今日人品
-      jrrp.date <日期> - 查看指定日期运势
-      jrrp.score <分数> - 查找特定分数出现的日期
+      jrrp.date <日期> - 查看指定日期人品
+      jrrp.score <分数> - 查找指定分数日期
     messages:
       result: "你今天的人品值是：{0}"
       prompt: "你要看看今天的人品吗？"
