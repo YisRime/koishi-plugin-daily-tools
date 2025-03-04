@@ -14,6 +14,7 @@ declare module 'koishi' {
 export interface DailyTools {
   user_id: string
   zanwo_enabled: boolean
+  last_speak_time?: number
 }
 
 // 插件元数据定义
@@ -145,6 +146,7 @@ export async function apply(ctx: Context, config: Config) {
   ctx.model.extend('daily_tools', {
     user_id: 'string',
     zanwo_enabled: 'boolean',
+    last_speak_time: 'unsigned',
   }, {
     primary: 'user_id',
   })
@@ -173,6 +175,17 @@ export async function apply(ctx: Context, config: Config) {
       }
     }, 24 * 60 * 60 * 1000);
   }
+
+  // 添加消息监听器，更新发言时间
+  ctx.middleware(async (session, next) => {
+    if (session.guildId && session.userId) {
+      await ctx.database.upsert('daily_tools', [{
+        user_id: session.userId,
+        last_speak_time: Date.now(),
+      }])
+    }
+    return next()
+  })
 
   /**
    * 精致睡眠命令处理
@@ -359,10 +372,31 @@ export async function apply(ctx: Context, config: Config) {
           return;
         }
 
-        // 随机选择目标并执行禁言
-        const targetIndex = new Random().int(0, validMembers.length - 1);
-        const targetId = validMembers[targetIndex];
-        await utils.mute(session, targetId, muteDuration, config.enableMessage);
+        // 获取所有成员的最后发言时间
+        const membersData = await ctx.database.get('daily_tools', {
+          user_id: { $in: validMembers }
+        })
+
+        // 按最后发言时间排序，并排除最近发言的成员
+        const sortedMembers = validMembers.sort((a, b) => {
+          const timeA = membersData.find(m => m.user_id === a)?.last_speak_time || 0
+          const timeB = membersData.find(m => m.user_id === b)?.last_speak_time || 0
+          return timeA - timeB
+        })
+
+        // 排除最后发言的20%的成员
+        const excludeCount = Math.ceil(sortedMembers.length * 0.2)
+        const availableMembers = sortedMembers.slice(0, -excludeCount)
+
+        if (!availableMembers.length) {
+          await utils.mute(session, session.userId, muteDuration, config.enableMessage);
+          return;
+        }
+
+        // 从剩余成员中随机选择
+        const targetIndex = new Random().int(0, availableMembers.length - 1)
+        const targetId = availableMembers[targetIndex]
+        await utils.mute(session, targetId, muteDuration, config.enableMessage)
       } catch (error) {
         console.error('Failed to execute random mute:', error);
         const message = await session.send(session.text('commands.mute.messages.errors.no_valid_members'));
