@@ -1,6 +1,6 @@
 {
   "name": "koishi-plugin-daily-tools",
-  "description": "每日小工具，提供“限定版”今日人品，精致睡眠，随机禁言以及自动点赞功能",
+  "description": "一些小工具，提供精致睡眠，随机禁言以及自动点赞等功能",
   "version": "1.8.3",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
@@ -22,12 +22,9 @@
     "koishi",
     "plugin",
     "daily-tools",
-    "jrrp",
     "sleep",
     "mute",
     "zanwo",
-    "PCL",
-    "今日人品",
     "精致睡眠",
     "禁言",
     "赞我"
