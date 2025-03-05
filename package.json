@@ -1,7 +1,7 @@
 {
   "name": "koishi-plugin-daily-tools",
   "description": "一些小工具，提供精致睡眠，随机禁言以及自动点赞等功能",
-  "version": "1.9.1",
+  "version": "1.9.2",
   "contributors": [
     "Yis_Rime <yis_rime@outlook.com>"
   ],

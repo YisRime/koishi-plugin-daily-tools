@@ -79,16 +79,18 @@ const operationHandler = {
     if (cached?.expiry > Date.now()) return cached.data;
 
     try {
-      const members = await session.onebot.getGroupMemberList(session.guildId);
-      const filtered = members
-        .filter(m => m.role === 'member' && String(m.user_id) !== String(session.selfId))
-        .map(m => String(m.user_id));
+      const members: string[] = [];
+      for await (const member of session.bot.getGuildMemberIter(session.guildId)) {
+        if (String(member.user?.id) !== String(session.selfId)) {
+          members.push(String(member.user?.id));
+        }
+      }
 
       cache.members.set(cacheKey, {
-        data: filtered,
+        data: members,
         expiry: Date.now() + 3600000
       });
-      return filtered;
+      return members;
     } catch {
       return [];
     }
@@ -104,7 +106,7 @@ const operationHandler = {
    */
   mute: async (session: Session, targetId: string, duration: number, enableMessage: boolean) => {
     try {
-      await session.onebot.setGroupBan(session.guildId, targetId, duration);
+      await session.bot.muteGuildMember(session.guildId, targetId, duration * 1000);
       session.messageId && await session.bot.deleteMessage(session.channelId, session.messageId);
 
       if (enableMessage) {
