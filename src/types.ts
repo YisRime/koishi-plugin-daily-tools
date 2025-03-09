@@ -6,7 +6,7 @@ export interface BindData {
   private: Record<string, string>
 }
 
-// DDRace详细玩家数据格式 - 增强版
+// DDRace详细玩家数据格式 - 修正版，移除不存在的API相关字段
 export interface PlayerDetailedData {
   player: string
   points: {
@@ -77,64 +77,12 @@ export interface PlayerDetailedData {
     timestamp: number
   }>
 
-  // 新增扩展数据
+  // 保留部分可用的扩展数据
   country_rank?: {            // 国家内排名
     country_code: string,
     country_name: string,
     rank: number,
     total_players: number
-  }
-
-  map_progress?: {            // 地图完成进度
-    total_maps: number,
-    completed_maps: number,
-    completion_percentage: number,
-    maps_by_type?: Record<string, {
-      total: number,
-      completed: number,
-      percentage: number
-    }>
-  }
-
-  rank_history?: {            // 排名历史
-    dates: string[],
-    ranks: number[],
-    points: number[]
-  }
-
-  records?: {                 // 特殊记录
-    first_finishes: Array<{
-      map: string,
-      time: number,
-      date: string,
-      type: string
-    }>,
-    fastest_finishes: Array<{
-      map: string,
-      time: number,
-      date: string,
-      server: string
-    }>
-  }
-
-  achievements?: Array<{      // 游戏成就
-    id: string,
-    name: string,
-    description: string,
-    date_earned: string,
-    rarity: string            // 稀有度: common, uncommon, rare, epic, legendary
-  }>
-
-  playing_time?: {            // 游戏时间统计
-    total_seconds: number,
-    daily_average: number,
-    favorite_time: string     // 最常玩的时间段，如 "晚上"
-  }
-
-  longest_streak?: {          // 连续游戏记录
-    days: number,
-    start_date: string,
-    end_date: string
   }
 }
 
@@ -145,6 +93,7 @@ export interface DailyToolsConfig {
   puppeteerService: string
   showExtendedStats: boolean      // 是否显示扩展统计信息
   customTemplate: string          // 自定义模板路径
+  debugMode?: boolean             // 调试模式
 }
 
 // 服务接口

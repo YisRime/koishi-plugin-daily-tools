@@ -307,75 +307,75 @@ export function registerPlayerCommands(
       }
     })
 
-  // 添加查看地图完成进度的命令
-  ddr.subcommand('.progress', '查看玩家的地图完成进度')
-    .usage('示例: ddr.progress <玩家名称>')
-    .action(async ({ session }, name) => {
-      // 如果没提供名字，尝试使用绑定的名字
-      if (!name) {
-        const userId = session?.userId
-        const channelId = session?.channelId
+  // 移除 ddr.progress 命令，因为相关的API不存在
 
-        if (!userId || !channelId) return '无法获取用户信息，请提供玩家名称'
+  // 修改 ID 查询命令的理解
+  ddr.subcommand('.id', '通过玩家ID/昵称查询 DDRace 玩家数据')
+    .option('force', '-f 强制刷新缓存')
+    .option('details', '-d 显示详细信息')
+    .usage('示例: ddr.id <玩家ID或昵称>')
+    .action(async ({ session, options }, input) => {
+      if (!input) return '请提供玩家ID或昵称'
 
-        const playerName = await bindingService.getName(
+      input = input.trim()
+
+      // 由于API不区分ID和昵称，所以直接使用input查询
+      await session?.send('正在查询玩家数据，请稍候...')
+
+      const queryOptions: QueryOptions = {
+        force: options.force === true,
+        details: options.details === true
+      }
+
+      // 直接使用handlePlayerQuery查询，不再区分ID和昵称
+      return await handlePlayerQuery(session, input, queryOptions)
+    })
+
+  // 修改 bindid 为更通用的 查找并绑定
+  ddr.subcommand('.search', '查找并绑定DDRace玩家')
+    .usage('示例: ddr.search <部分玩家名称或ID>')
+    .action(async ({ session }, term) => {
+      if (!term) return '请提供要搜索的玩家名称或ID'
+
+      const userId = session?.userId
+      const channelId = session?.channelId
+
+      if (!userId) return '无法获取用户信息'
+
+      try {
+        // 通过term查询玩家
+        await session?.send('正在搜索玩家，请稍候...')
+        const playerData = await ddnetApi.fetchPlayer(term)
+
+        if (!playerData) {
+          return `未找到与 "${term}" 匹配的玩家，请检查输入是否正确`
+        }
+
+        // 获取玩家名称并绑定
+        const playerName = playerData.player
+
+        await bindingService.bind(
           userId,
           channelId,
+          playerName,
           session.subtype === 'group'
         )
 
-        if (!playerName) {
-          return '你还没有绑定玩家名称，请使用 ddr <玩家名称> 进行绑定'
+        let responseText = `已成功绑定玩家: ${playerName}`
+
+        // 添加一些基本信息
+        if (playerData.points && playerData.points.rank) {
+          responseText += `\n全球排名: #${playerData.points.rank}`
         }
 
-        name = playerName
-      } else {
-        name = api.formatPlayerName(name)
-        if (!name) return '请提供有效的玩家名称'
-      }
-
-      try {
-        const progress = await ddnetApi.fetchPlayerMapProgress(name)
-        if (!progress) {
-          return `未能获取到玩家 ${name} 的地图完成进度信息`
+        if (playerData.country && playerData.country.name) {
+          responseText += `\n国家: ${playerData.country.name}`
         }
 
-        let response = `${name} 的地图完成进度:\n`
-
-        // 安全处理总进度百分比
-        const totalPercentage = typeof progress.completion_percentage === 'number'
-          ? progress.completion_percentage.toFixed(2)
-          : '0.00';
-
-        response += `总计完成: ${progress.completed_maps || 0}/${progress.total_maps || 0} 张地图 (${totalPercentage}%)\n\n`
-
-        if (progress.maps_by_type) {
-          response += '按类型统计:\n'
-
-          // 定义接口以匹配预期的数据结构
-          interface MapTypeData {
-            total: number;
-            completed: number;
-            percentage: number;
-          }
-
-          // 使用类型断言告诉TypeScript这个对象的结构
-          for (const [type, mapData] of Object.entries(progress.maps_by_type)) {
-            // 转换为定义的接口类型
-            const data = mapData as MapTypeData;
-
-            // 安全处理各类型的百分比
-            const percentage = typeof data.percentage === 'number'
-              ? data.percentage.toFixed(2)
-              : '0.00';
-
-            response += `${type}: ${data.completed || 0}/${data.total || 0} (${percentage}%)\n`
-          }
-        }
-
-        return response
+        return responseText
       } catch (error) {
-        return `查询失败: ${error.message}`
+        ctx.logger.error(`搜索并绑定玩家失败:`, error)
+        return `搜索失败：${error.message || '未知错误'}`
       }
     })
 }

@@ -96,57 +96,20 @@ export function createHTMLRenderer(ctx: Context, config: DailyToolsConfig, playe
           bestRanks: (Array.isArray(playerData.best_ranks) ?
             playerData.best_ranks.slice(0, 5) : []),
 
-          // 添加新的扩展数据
+          // 保留可用的扩展数据
           hasCountryRank: !!playerData.country_rank,
           countryRank: playerData.country_rank?.rank ?? 'N/A',
           countryTotalPlayers: playerData.country_rank?.total_players ?? 0,
 
-          hasMapProgress: !!playerData.map_progress,
-          completedMaps: playerData.map_progress?.completed_maps ?? 0,
-          totalMaps: playerData.map_progress?.total_maps ?? 0,
-          completionPercentage: playerData.map_progress?.completion_percentage?.toFixed(2) ?? '0',
-          mapsByType: playerData.map_progress?.maps_by_type ?? {},
-
-          hasRankHistory: !!playerData.rank_history &&
-                        Array.isArray(playerData.rank_history.dates) &&
-                        playerData.rank_history.dates.length > 0,
-          rankHistory: playerData.rank_history ?? { dates: [], ranks: [], points: [] },
-
-          hasRecords: !!playerData.records &&
-                   (Array.isArray(playerData.records.first_finishes) && playerData.records.first_finishes.length > 0 ||
-                   Array.isArray(playerData.records.fastest_finishes) && playerData.records.fastest_finishes.length > 0),
-          firstFinishRecords: Array.isArray(playerData.records?.first_finishes) ?
-                           playerData.records.first_finishes.slice(0, 5) : [],
-          fastestFinishRecords: Array.isArray(playerData.records?.fastest_finishes) ?
-                             playerData.records.fastest_finishes.slice(0, 5) : [],
-
-          hasAchievements: !!playerData.achievements &&
-                         Array.isArray(playerData.achievements) &&
-                         playerData.achievements.length > 0,
-          achievements: Array.isArray(playerData.achievements) ?
-                      playerData.achievements.slice(0, 10) : [],
-
-          hasPlayingTime: !!playerData.playing_time,
-          totalPlayingHours: playerData.playing_time ?
-                          (playerData.playing_time.total_seconds / 3600).toFixed(1) : '0',
-          dailyAverageHours: playerData.playing_time?.daily_average ?
-                          (playerData.playing_time.daily_average / 3600).toFixed(1) : '0',
-          favoritePlayTime: playerData.playing_time?.favorite_time ?? '未知',
-
-          hasLongestStreak: !!playerData.longest_streak,
-          longestStreakDays: playerData.longest_streak?.days ?? 0,
-          streakStartDate: playerData.longest_streak?.start_date ?? '',
-          streakEndDate: playerData.longest_streak?.end_date ?? ''
+          // 添加地图类型得分和排名
+          typePoints: playerData.type_points || {},
+          typeRanks: playerData.type_ranks || {}
         }
 
         // 判断是否有活动数据
         safePlayer.hasActivity = !!(playerData.activity &&
           ((Array.isArray(playerData.activity.weekly) && playerData.activity.weekly.length > 0) ||
           (Array.isArray(playerData.activity.monthly) && playerData.activity.monthly.length > 0)))
-
-        // 地图类型得分分布安全提取
-        const typePoints = playerData.type_points || {}
-        const typeRanks = playerData.type_ranks || {}
 
         // 基本数据替换
         let html = template
@@ -181,12 +144,16 @@ export function createHTMLRenderer(ctx: Context, config: DailyToolsConfig, playe
           html = html.replace(/{{#if extendedStats}}/g, '').replace(/{{\/if extendedStats}}/g, '')
         }
 
+        // 地图类型得分分布安全提取
+        const typePoints = playerData.type_points || {}
+        const typeRanks = playerData.type_ranks || {}
+
         // 处理地图类型得分
-        if (Object.keys(typePoints).length > 0) {
+        if (Object.keys(safePlayer.typePoints).length > 0) {
           let typePointsHtml = ''
 
-          Object.entries(typePoints).forEach(([type, points]) => {
-            const rank = typeRanks[type] || 'N/A'
+          Object.entries(safePlayer.typePoints).forEach(([type, points]) => {
+            const rank = safePlayer.typeRanks[type] || 'N/A'
             typePointsHtml += `<div class="map-type-item">
               <div class="map-type-name">${type}</div>
               <div class="map-type-stats">
@@ -271,7 +238,7 @@ export function createHTMLRenderer(ctx: Context, config: DailyToolsConfig, playe
 
         // 处理喜爱地图部分
         if (safePlayer.hasFavoriteMaps) {
-          html = html.replace(/{{#if favoriteMaps}}([\s\S]*?){{\/if favoriteMaps}}/g, '$1')
+          html = html.replace(/{{#if favoriteMaps}}([\\s\S]*?){{\/if favoriteMaps}}/g, '$1')
             .replace(/{{favoriteMapCount}}/g, String(safePlayer.favoriteMaps.length))
 
           let mapsHtml = ''
@@ -322,128 +289,24 @@ export function createHTMLRenderer(ctx: Context, config: DailyToolsConfig, playe
           html = html.replace(/{{hasCountryRank}}/g, 'false')
         }
 
-        // 处理地图完成进度
-        if (safePlayer.hasMapProgress) {
-          html = html.replace(/{{hasMapProgress}}/g, 'true')
-            .replace(/{{completedMaps}}/g, String(safePlayer.completedMaps))
-            .replace(/{{totalMaps}}/g, String(safePlayer.totalMaps))
-            .replace(/{{completionPercentage}}/g, safePlayer.completionPercentage)
-
-          // 处理按类型的地图完成情况
-          if (Object.keys(safePlayer.mapsByType).length > 0) {
-            let progressHtml = ''
-            for (const [type, data] of Object.entries(safePlayer.mapsByType)) {
-              progressHtml += `<div class="progress-item">
-                <div class="progress-type">${type}</div>
-                <div class="progress-bar">
-                  <div class="progress-fill" style="width: ${data.percentage}%"></div>
-                </div>
-                <div class="progress-text">
-                  ${data.completed}/${data.total} (${data.percentage.toFixed(2)}%)
-                </div>
-              </div>`
-            }
-            html = html.replace(/{{mapProgressContent}}/g, progressHtml)
-          } else {
-            html = html.replace(/{{mapProgressContent}}/g, '<div class="no-data">无地图进度分类数据</div>')
-          }
-        } else {
-          html = html.replace(/{{hasMapProgress}}/g, 'false')
-        }
-
-        // 处理排名历史
-        if (safePlayer.hasRankHistory) {
-          html = html.replace(/{{hasRankHistory}}/g, 'true')
-
-          // 将排名历史数据转换为JS数组
-          const rankDates = JSON.stringify(safePlayer.rankHistory.dates)
-          const rankValues = JSON.stringify(safePlayer.rankHistory.ranks)
-          const pointValues = JSON.stringify(safePlayer.rankHistory.points)
-
-          html = html.replace(/{{rankDates}}/g, rankDates)
-            .replace(/{{rankValues}}/g, rankValues)
-            .replace(/{{pointValues}}/g, pointValues)
-        } else {
-          html = html.replace(/{{hasRankHistory}}/g, 'false')
-        }
-
-        // 处理特殊记录
-        if (safePlayer.hasRecords) {
-          html = html.replace(/{{hasRecords}}/g, 'true')
-
-          // 处理首次完成记录
-          if (safePlayer.firstFinishRecords.length > 0) {
-            let firstFinishesHtml = ''
-            for (const record of safePlayer.firstFinishRecords) {
-              firstFinishesHtml += `<div class="record-item">
-                <div class="record-map">${record.map}</div>
-                <div class="record-time">${record.time.toFixed(2)}s</div>
-                <div class="record-date">${record.date}</div>
-                <div class="record-type">${record.type}</div>
-              </div>`
-            }
-            html = html.replace(/{{firstFinishesContent}}/g, firstFinishesHtml)
-          } else {
-            html = html.replace(/{{firstFinishesContent}}/g, '<div class="no-data">无首次完成记录</div>')
-          }
-
-          // 处理最快完成记录
-          if (safePlayer.fastestFinishRecords.length > 0) {
-            let fastestFinishesHtml = ''
-            for (const record of safePlayer.fastestFinishRecords) {
-              fastestFinishesHtml += `<div class="record-item">
-                <div class="record-map">${record.map}</div>
-                <div class="record-time">${record.time.toFixed(2)}s</div>
-                <div class="record-date">${record.date}</div>
-                <div class="record-server">${record.server}</div>
-              </div>`
-            }
-            html = html.replace(/{{fastestFinishesContent}}/g, fastestFinishesHtml)
-          } else {
-            html = html.replace(/{{fastestFinishesContent}}/g, '<div class="no-data">无最快完成记录</div>')
-          }
-        } else {
-          html = html.replace(/{{hasRecords}}/g, 'false')
-        }
-
-        // 处理成就
-        if (safePlayer.hasAchievements) {
-          html = html.replace(/{{hasAchievements}}/g, 'true')
-            .replace(/{{achievementsCount}}/g, String(safePlayer.achievements.length))
-
-          let achievementsHtml = ''
-          for (const achievement of safePlayer.achievements) {
-            const rarityClass = `rarity-${achievement.rarity.toLowerCase()}`
-            achievementsHtml += `<div class="achievement-item ${rarityClass}">
-              <div class="achievement-name">${achievement.name}</div>
-              <div class="achievement-desc">${achievement.description}</div>
-              <div class="achievement-date">获得于: ${achievement.date_earned}</div>
-            </div>`
-          }
-          html = html.replace(/{{achievementsContent}}/g, achievementsHtml)
-        } else {
-          html = html.replace(/{{hasAchievements}}/g, 'false')
-        }
-
-        // 处理游戏时间
-        if (safePlayer.hasPlayingTime) {
-          html = html.replace(/{{hasPlayingTime}}/g, 'true')
-            .replace(/{{totalPlayingHours}}/g, safePlayer.totalPlayingHours)
-            .replace(/{{dailyAverageHours}}/g, safePlayer.dailyAverageHours)
-            .replace(/{{favoritePlayTime}}/g, safePlayer.favoritePlayTime)
-        } else {
-          html = html.replace(/{{hasPlayingTime}}/g, 'false')
-        }
-
-        // 处理连续记录
-        if (safePlayer.hasLongestStreak) {
-          html = html.replace(/{{hasLongestStreak}}/g, 'true')
-            .replace(/{{longestStreakDays}}/g, String(safePlayer.longestStreakDays))
-            .replace(/{{streakStartDate}}/g, safePlayer.streakStartDate)
-            .replace(/{{streakEndDate}}/g, safePlayer.streakEndDate)
-        } else {
-          html = html.replace(/{{hasLongestStreak}}/g, 'false')
-        }
+        // 移除所有对不可用数据的处理
+        // 确保模板中相关的变量都被替换为默认值以避免出错
+        html = html
+          // 地图进度
+          .replace(/{{hasMapProgress}}/g, 'false')
+          .replace(/{{mapProgressContent}}/g, '<div class="no-data">无地图进度数据</div>')
+          // 排名历史
+          .replace(/{{hasRankHistory}}/g, 'false')
+          // 特殊记录
+          .replace(/{{hasRecords}}/g, 'false')
+          .replace(/{{firstFinishesContent}}/g, '<div class="no-data">无首次完成记录</div>')
+          .replace(/{{fastestFinishesContent}}/g, '<div class="no-data">无最快完成记录</div>')
+          // 成就
+          .replace(/{{hasAchievements}}/g, 'false')
+          // 游戏时间
+          .replace(/{{hasPlayingTime}}/g, 'false')
+          // 连续记录
+          .replace(/{{hasLongestStreak}}/g, 'false')
 
         // 渲染HTML为图片
         ctx.logger.debug('正在开始HTML渲染...')

@@ -9,12 +9,9 @@ export interface DDNetApiInterface {
   fetchRanks(map: string): Promise<any>;
   fetchMapTypes(): Promise<any>;
   fetchMapInfo(mapName: string): Promise<any>;
-  fetchPlayerExtended(name: string): Promise<any>;          // 获取额外的玩家数据
-  fetchPlayerRankHistory(name: string): Promise<any>;       // 获取玩家排名历史
-  fetchPlayerMapProgress(name: string): Promise<any>;       // 获取玩家地图完成进度
-  fetchPlayerCountryRank(name: string): Promise<any>;       // 获取玩家国家内排名
-  fetchPlayerRecords(name: string): Promise<any>;           // 获取玩家记录
-  fetchPlayerAchievements(name: string): Promise<any>;      // 获取玩家成就
+  fetchPlayerExtended(name: string): Promise<any>;
+  fetchPlayerCountryRank(name: string): Promise<any>;
+  fetchPlayerRankHistory(name: string): Promise<any>;
 }
 
 export function createDDNetApi(ctx: Context): DDNetApiInterface {
@@ -288,7 +285,7 @@ export function createDDNetApi(ctx: Context): DDNetApiInterface {
       }
     },
 
-    // 获取玩家扩展数据 - 综合获取各种数据
+    // 获取玩家扩展数据 - 简化版，只取实际存在的API数据
     async fetchPlayerExtended(name: string) {
       if (!name || name.trim() === '') {
         ctx.logger.warn('尝试获取空玩家名称');
@@ -297,42 +294,21 @@ export function createDDNetApi(ctx: Context): DDNetApiInterface {
 
       try {
         ctx.logger.debug(`获取玩家扩展数据: ${name}`);
-        const encodedName = encodeURIComponent(name.trim());
 
-        // 尝试获取更全面的玩家数据
+        // 获取基本玩家数据
         const playerData = await this.fetchDetailedPlayer(name);
         if (!playerData) return null;
 
-        // 尝试获取各种额外数据
-        try {
-          // 1. 获取国家排名数据
-          if (playerData.country && playerData.country.code) {
+        // 尝试获取国家排名数据
+        if (playerData.country && playerData.country.code) {
+          try {
             const countryData = await this.fetchPlayerCountryRank(name);
             if (countryData) {
               playerData.country_rank = countryData;
             }
+          } catch (e) {
+            ctx.logger.debug(`获取玩家国家排名失败: ${e.message}`);
           }
-
-          // 2. 获取地图进度数据
-          const progressData = await this.fetchPlayerMapProgress(name);
-          if (progressData) {
-            playerData.map_progress = progressData;
-          }
-
-          // 3. 获取记录数据
-          const recordsData = await this.fetchPlayerRecords(name);
-          if (recordsData) {
-            playerData.records = recordsData;
-          }
-
-          // 4. 获取成就数据
-          const achievementsData = await this.fetchPlayerAchievements(name);
-          if (achievementsData) {
-            playerData.achievements = achievementsData;
-          }
-        } catch (e) {
-          // 额外数据获取失败不影响基本数据返回
-          ctx.logger.debug(`获取玩家扩展数据部分失败: ${e.message}`);
         }
 
         return playerData;
@@ -352,20 +328,6 @@ export function createDDNetApi(ctx: Context): DDNetApiInterface {
         return await fetchWithRetry(url, 1);
       } catch (error) {
         ctx.logger.debug(`获取玩家排名历史失败: ${error.message}`);
-        return null;
-      }
-    },
-
-    // 获取玩家地图完成进度
-    async fetchPlayerMapProgress(name: string) {
-      try {
-        ctx.logger.debug(`获取玩家地图完成进度: ${name}`);
-        const encodedName = encodeURIComponent(name.trim());
-        const url = `${BASE_URL}/players/progress/${encodedName}.json`;
-
-        return await fetchWithRetry(url, 1);
-      } catch (error) {
-        ctx.logger.debug(`获取玩家地图完成进度失败: ${error.message}`);
         return null;
       }
     },
@@ -401,35 +363,6 @@ export function createDDNetApi(ctx: Context): DDNetApiInterface {
         };
       } catch (error) {
         ctx.logger.debug(`获取玩家国家排名失败: ${error.message}`);
-        return null;
-      }
-    },
-
-    // 获取玩家记录 - 如首次完成、速度记录等
-    async fetchPlayerRecords(name: string) {
-      try {
-        ctx.logger.debug(`获取玩家记录: ${name}`);
-        const encodedName = encodeURIComponent(name.trim());
-        const url = `${BASE_URL}/players/records/${encodedName}.json`;
-
-        return await fetchWithRetry(url, 1);
-      } catch (error) {
-        ctx.logger.debug(`获取玩家记录失败: ${error.message}`);
-        return null;
-      }
-    },
-
-    // 获取玩家成就
-    async fetchPlayerAchievements(name: string) {
-      try {
-        ctx.logger.debug(`获取玩家成就: ${name}`);
-        // 注意：这是一个假设的API端点，实际上可能不存在
-        const encodedName = encodeURIComponent(name.trim());
-        const url = `${BASE_URL}/players/achievements/${encodedName}.json`;
-
-        return await fetchWithRetry(url, 1);
-      } catch (error) {
-        ctx.logger.debug(`获取玩家成就失败: ${error.message}`);
         return null;
       }
     }
