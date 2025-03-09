@@ -1,6 +1,6 @@
 import { Context, h } from 'koishi'
-import { DDNetApiInterface } from '../ddnet-api'
-import { BindingService, CacheService, HTMLRenderer, PlayerDetailedData } from '../types'
+import { DDNetApiInterface } from './api'
+import { BindingService, CacheService, HTMLRenderer, PlayerDetailedData } from '../utils/services'
 
 export function registerPlayerCommands(
   ctx: Context,

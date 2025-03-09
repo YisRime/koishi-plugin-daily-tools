@@ -1,6 +1,6 @@
 import { Context } from 'koishi'
 import { readFile } from 'fs/promises'
-import { HTMLRenderer, PlayerDetailedData, DailyToolsConfig } from '../types'
+import { HTMLRenderer, PlayerDetailedData, DailyToolsConfig } from './services'
 
 // 工具函数：格式化时间戳为日期字符串
 function formatDate(timestamp: number): string {
