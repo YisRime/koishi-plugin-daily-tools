@@ -367,24 +367,18 @@ export function apply(ctx: Context, config: Config) {
   // HTML渲染
   const renderer = {
     async html2image(htmlContent: string): Promise<Buffer> {
-      const puppeteer = ctx.get('puppeteer')
-      if (!puppeteer) {
-        throw new Error('浏览器渲染服务不可用')
-      }
-
       try {
-        // 尝试不同的 API 方法
-        const possibleMethods = ['render', 'renderHTML', 'snapshot', 'renderToBuffer']
-        for (const method of possibleMethods) {
-          if (typeof (puppeteer as any)[method] === 'function') {
-            return await (puppeteer as any)[method](htmlContent, {
-              viewport: { width: 800, height: 600 },
-              type: 'png',
-              fullPage: true
-            })
-          }
+        const puppeteer = ctx.get(config.puppeteerService)
+        if (!puppeteer) {
+          throw new Error(`浏览器渲染服务 "${config.puppeteerService}" 不可用`)
         }
-        throw new Error('找不到可用的渲染方法')
+
+        // 使用标准的 render 方法
+        return await puppeteer.render(htmlContent, {
+          viewport: { width: 800, height: 600 },
+          type: 'png',
+          fullPage: true,
+        })
       } catch (e) {
         ctx.logger.error('HTML 渲染失败:', e)
         throw new Error(`HTML 渲染失败: ${e.message}`)
