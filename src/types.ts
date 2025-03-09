@@ -1,5 +1,3 @@
-import { Context } from 'koishi'
-
 // 工具类型定义
 export interface BindData {
   group: Record<string, Record<string, string>>

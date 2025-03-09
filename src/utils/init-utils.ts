@@ -1,7 +1,6 @@
 import { Context } from 'koishi'
 import { existsSync, mkdirSync } from 'fs'
 import { writeFile } from 'fs/promises'
-import { resolve } from 'path'
 
 // 初始化目录和文件
 export async function initializePlugin(ctx: Context, paths: {
@@ -464,7 +463,13 @@ function getEnhancedPlayerTemplate(): string {
             <span class="section-title-sub">共{{partnerCount}}名</span>
           </div>
           <div class="flex-list">
-            {{favoritePartnersContent}}
+            {{#each favoritePartners}}
+            <div class="flex-item">
+              <div class="flex-item-name">{{name}}</div>
+              <div class="flex-item-stat">{{finishes}} 次完成</div>
+              {{#if country}}<div class="flex-item-stat">来自 {{country}}</div>{{/if}}
+            </div>
+            {{/each}}
           </div>
         </div>
         {{/if favoritePartners}}
@@ -501,7 +506,16 @@ function getEnhancedPlayerTemplate(): string {
               </tr>
             </thead>
             <tbody>
-              {{lastFinishesContent}}
+              {{#each lastFinishes}}
+              <tr>
+                <td>{{map}}</td>
+                <td>{{time}}</td>
+                <td>{{type}}</td>
+                <td>{{country}}</td>
+                <td>{{date}}</td>
+                <td>{{points}}</td>
+              </tr>
+              {{/each}}
             </tbody>
           </table>
         </div>

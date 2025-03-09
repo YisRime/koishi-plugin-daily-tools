@@ -9,86 +9,130 @@ export function registerPlayerCommands(
   cacheService: CacheService,
   renderer: HTMLRenderer
 ) {
-  // 定义查询选项接口
-  interface QueryOptions {
-    force?: boolean
-    details?: boolean
-    full?: boolean
-  }
+  // 玩家数据处理工具
+  const playerUtils = {
+    // 格式化玩家名称
+    formatName(name?: string): string {
+      return name?.trim().replace(/\s+/g, ' ') || ''
+    },
 
-  // 玩家数据获取API
-  const api = {
-    async fetchPlayer(name: string, options: QueryOptions = {}): Promise<PlayerDetailedData | null> {
-      if (!name || name.trim() === '') {
-        ctx.logger.warn('尝试获取空玩家名称')
-        return null
+    // 获取已绑定的玩家名称或使用提供的名称
+    async resolvePlayerName(session: any, name?: string): Promise<string> {
+      const userId = session?.userId
+      const channelId = session?.channelId
+
+      // 如果未提供名称，尝试获取绑定的名称
+      if (!name) {
+        if (!userId || !channelId) {
+          throw new Error('无法获取用户信息，请提供玩家名称')
+        }
+
+        const boundName = await bindingService.getName(
+          userId,
+          channelId,
+          session.subtype === 'group'
+        )
+
+        if (!boundName) {
+          throw new Error('你还没有绑定玩家名称，请使用 ddr <玩家名称> 进行绑定')
+        }
+
+        return boundName
       }
 
-      // 格式化名称
-      name = this.formatPlayerName(name)
+      // 使用提供的名称
+      const formattedName = this.formatName(name)
+      if (!formattedName) {
+        throw new Error('请提供有效的玩家名称')
+      }
+
+      return formattedName
+    },
+
+    // 获取玩家数据
+    async fetchPlayer(name: string, options: { details?: boolean, full?: boolean } = {}): Promise<PlayerDetailedData> {
       ctx.logger.debug(`开始获取玩家数据: ${name}`)
 
       try {
-        // 使用扩展API获取更丰富的数据
-        if (options.details === true) {
-          let playerData = await ddnetApi.fetchPlayerExtended(name)
+        let playerData: any = null
+
+        // 根据选项决定API调用级别
+        if (options.details || options.full) {
+          playerData = await ddnetApi.fetchPlayerExtended(name)
           if (playerData) {
             ctx.logger.info(`成功获取到玩家 ${name} 的扩展数据`)
-            return playerData as PlayerDetailedData
+            return playerData
           }
         }
 
-        // 如果没请求扩展数据或扩展数据获取失败，回退到详细API
-        let playerData = await ddnetApi.fetchDetailedPlayer(name)
-        if (playerData) {
-          ctx.logger.info(`成功获取到玩家 ${name} 的详细数据`)
-          return playerData as PlayerDetailedData
+        // 如果扩展API失败，尝试详细API
+        if (!playerData) {
+          playerData = await ddnetApi.fetchDetailedPlayer(name)
+          if (playerData) {
+            ctx.logger.info(`成功获取到玩家 ${name} 的详细数据`)
+            return playerData
+          }
         }
 
         // 最后尝试基本API
-        playerData = await ddnetApi.fetchPlayer(name)
-        if (playerData) {
-          ctx.logger.info(`成功获取到玩家 ${name} 的基本数据`)
-          return playerData as PlayerDetailedData
+        if (!playerData) {
+          playerData = await ddnetApi.fetchPlayer(name)
+          if (playerData) {
+            ctx.logger.info(`成功获取到玩家 ${name} 的基本数据`)
+            return playerData
+          }
         }
 
-        ctx.logger.warn(`未找到玩家: ${name}`)
-        return null
+        // 如果所有API都失败
+        throw new Error(`未找到玩家 "${name}" 的数据`)
       } catch (error) {
         ctx.logger.error(`获取玩家数据失败:`, error)
-        return null
+        throw error
       }
     },
 
-    // 格式化玩家名称，处理特殊字符和空格
-    formatPlayerName(name: string): string {
-      if (!name) return ''
-      // 去除首尾空格，压缩中间空格
-      return name.trim().replace(/\s+/g, ' ')
+    // 从缓存获取或生成新的图像
+    async getPlayerImage(session: any, name: string, options: { force?: boolean, details?: boolean, full?: boolean } = {}): Promise<Buffer> {
+      // 构建缓存键
+      const cacheKey = options.details || options.full
+        ? `player_detailed_${name}`
+        : `player_${name}`
+
+      // 检查缓存，除非强制刷新
+      if (!options.force) {
+        const cachedImage = await cacheService.get(cacheKey)
+        if (cachedImage) {
+          ctx.logger.debug(`使用缓存的玩家数据: ${name}`)
+          return cachedImage
+        }
+      }
+
+      // 获取新数据并渲染
+      session?.send('正在查询玩家数据，请稍候...')
+
+      const playerData = await this.fetchPlayer(name, options)
+      const imageData = await renderer.renderPlayerStats(playerData)
+
+      // 缓存新图像
+      ctx.logger.debug(`缓存玩家 ${name} 的数据...`)
+      await cacheService.set(cacheKey, imageData)
+
+      return imageData
     }
   }
 
-  // 注册命令
-  const ddr = ctx.command('ddr', 'DDRace 游戏相关功能')
-    .usage('示例: ddr <玩家名称>')
-    .action(async ({ session }, name) => {
-      if (!name) return '请提供玩家名称'
-
-      name = api.formatPlayerName(name)
-
+  // 定义命令处理函数
+  const cmdHandlers = {
+    // 处理绑定玩家名称
+    async handleBind(session: any, name: string): Promise<string> {
       const userId = session?.userId
       const channelId = session?.channelId
 
       if (!userId) return '无法获取用户信息'
 
-      // 先尝试验证玩家是否存在
       try {
-        const playerData = await api.fetchPlayer(name)
-        if (!playerData) {
-          return `未找到玩家 "${name}"，请检查名称是否正确`
-        }
-
-        // 使用API返回的标准名称
+        // 验证玩家是否存在
+        const playerData = await playerUtils.fetchPlayer(name, {})
         const standardName = playerData.player || name
 
         // 绑定玩家名称
@@ -101,8 +145,9 @@ export function registerPlayerCommands(
 
         return `已成功绑定玩家名称：${standardName}`
       } catch (error) {
-        ctx.logger.error('玩家绑定验证失败:', error)
-        // 出错时仍然允许绑定，但使用原始名称
+        ctx.logger.error('绑定失败:', error)
+
+        // 出错时仍然允许绑定，但使用原始名称并显示警告
         await bindingService.bind(
           userId,
           channelId,
@@ -112,98 +157,170 @@ export function registerPlayerCommands(
 
         return `已绑定玩家名称：${name}（警告：无法验证此玩家是否存在）`
       }
-    })
+    },
 
-  // 处理玩家数据查询的函数
-  const handlePlayerQuery = async (session: any, name?: string, options: QueryOptions = {}): Promise<string | h> => {
-    const userId = session?.userId
-    const channelId = session?.channelId
-    const isDetailed = options.details === true
+    // 处理玩家查询
+    async handleQuery(session: any, name?: string, options: { force?: boolean, details?: boolean, full?: boolean } = {}): Promise<h | string> {
+      try {
+        // 解析玩家名称
+        const playerName = await playerUtils.resolvePlayerName(session, name)
 
-    // 如果没提供名字，尝试使用绑定的名字
-    if (!name) {
-      if (!userId || !channelId) return '无法获取用户信息，请提供玩家名称'
+        // 获取图像数据
+        const imageData = await playerUtils.getPlayerImage(session, playerName, options)
+        const cacheAge = cacheService.getAge(`player_${options.details ? 'detailed_' : ''}${playerName}`)
+        const cacheInfo = `\n数据缓存于 ${cacheAge || 0} 分钟前`
 
-      const playerName = await bindingService.getName(
-        userId,
-        channelId,
-        session.subtype === 'group'
-      )
-
-      if (!playerName) {
-        return '你还没有绑定玩家名称，请使用 ddr <玩家名称> 进行绑定'
-      }
-
-      name = playerName
-    } else {
-      name = api.formatPlayerName(name)
-      if (!name) return '请提供有效的玩家名称'
-    }
-
-    // 使用不同的缓存键以区分普通查询和详细查询
-    const cacheKey = isDetailed
-      ? `player_detailed_${name}`
-      : `player_${name}`
-
-    // 检查缓存
-    if (!options.force) {
-      const cachedImage = await cacheService.get(cacheKey)
-      if (cachedImage) {
-        const cacheAge = cacheService.getAge(cacheKey)
-        const cacheInfo = `\n数据缓存于${cacheAge || 0}分钟前`
-
+        // 返回消息
         return h('message', [
-          h.text(`${name} 的成绩信息如下：`),
-          h.image(cachedImage, 'image/png'),
-          h.text(`${cacheInfo}\n使用 ddr.rank -f ${name} 强制刷新`)
+          h.text(`${playerName} 的成绩信息如下：`),
+          h.image(imageData, 'image/png'),
+          h.text(`${cacheInfo}\n使用 ddr.rank -f ${playerName} 强制刷新`)
         ])
+      } catch (error) {
+        return `查询失败：${error.message || '未知错误'}\n可能是 DDNet 官网暂时无法访问，请稍后再试`
       }
-    }
+    },
 
-    await session?.send('正在查询玩家数据，请稍候...')
+    // 处理国家排名查询
+    async handleCountryRank(session: any, name?: string): Promise<string> {
+      try {
+        // 解析玩家名称
+        const playerName = await playerUtils.resolvePlayerName(session, name)
 
-    // 获取新数据
-    try {
-      ctx.logger.info(`开始查询玩家 ${name} 的数据...`)
-      const playerData = await api.fetchPlayer(name, options)
+        // 获取国家排名数据
+        const countryRank = await ddnetApi.fetchPlayerCountryRank(playerName)
+        if (!countryRank) {
+          return `未能获取到玩家 ${playerName} 的国家排名信息`
+        }
 
-      if (!playerData) {
-        ctx.logger.warn(`未找到玩家 ${name} 的数据`)
-        return `没找到玩家 "${name}" 的数据，请检查名称是否正确`
+        // 返回排名信息
+        return `${playerName} 在 ${countryRank.country_name}(${countryRank.country_code}) 的排名: 第 ${countryRank.rank} 名 (共 ${countryRank.total_players} 名玩家)`
+      } catch (error) {
+        return `查询失败: ${error.message}`
       }
+    },
 
-      ctx.logger.info(`开始渲染玩家 ${name} 的数据...`)
-      const imageData = await renderer.renderPlayerStats(playerData)
+    // 处理搜索并绑定玩家
+    async handleSearch(session: any, term: string): Promise<string> {
+      if (!term) return '请提供要搜索的玩家名称'
 
-      ctx.logger.info(`缓存玩家 ${name} 的数据图像...`)
-      await cacheService.set(cacheKey, imageData)
+      const userId = session?.userId
+      const channelId = session?.channelId
 
-      return h('message', [
-        h.text(`${name} 的成绩信息如下：`),
-        h.image(imageData, 'image/png'),
-        h.text(`\n查询完成 (${new Date().toLocaleTimeString()})`)
-      ])
-    } catch (error) {
-      ctx.logger.error(`查询玩家 ${name} 数据失败:`, error)
-      return `查询失败：${error.message || '未知错误'}\n可能是 DDNet 官网暂时无法访问，请稍后再试`
+      if (!userId) return '无法获取用户信息'
+
+      try {
+        await session?.send('正在搜索玩家，请稍候...')
+
+        // 通过名称查询玩家
+        const playerData = await ddnetApi.fetchPlayer(term)
+        if (!playerData) {
+          return `未找到与 "${term}" 匹配的玩家，请检查输入是否正确`
+        }
+
+        // 绑定找到的玩家
+        const playerName = playerData.player
+        await bindingService.bind(
+          userId,
+          channelId,
+          playerName,
+          session.subtype === 'group'
+        )
+
+        // 构建响应信息
+        let response = `已成功绑定玩家: ${playerName}`
+
+        if (playerData.points?.rank) {
+          response += `\n全球排名: #${playerData.points.rank}`
+        }
+
+        if (playerData.country?.name) {
+          response += `\n国家: ${playerData.country.name}`
+        }
+
+        return response
+      } catch (error) {
+        ctx.logger.error(`搜索失败:`, error)
+        return `搜索失败：${error.message || '未知错误'}`
+      }
     }
   }
 
-  // 查询玩家分数 - 增强版
+  // 创建主命令
+  const ddr = ctx.command('ddr', 'DDRace 游戏相关功能')
+    .usage('示例: ddr <玩家名称> - 绑定玩家名称')
+    .action(async ({ session }, name) => {
+      if (!name) return '请提供玩家名称'
+      name = playerUtils.formatName(name)
+      return cmdHandlers.handleBind(session, name)
+    })
+
+  // 查询玩家分数
   ddr.subcommand('.rank', '查询 DDRace 玩家分数')
+    .alias('.r') // 添加别名
     .option('force', '-f 强制刷新缓存')
     .option('details', '-d 显示详细信息')
     .usage('示例: ddr.rank <玩家名称>')
     .action(async ({ session, options }, name) => {
-      const queryOptions: QueryOptions = {
+      return cmdHandlers.handleQuery(session, name, {
         force: options.force === true,
         details: options.details === true
-      }
-      return await handlePlayerQuery(session, name, queryOptions)
+      })
+    })
+
+  // 玩家详细统计
+  ddr.subcommand('.stats', '查询 DDRace 玩家详细统计')
+    .alias('.s') // 添加别名
+    .option('force', '-f 强制刷新缓存')
+    .usage('示例: ddr.stats <玩家名称>')
+    .action(async ({ session, options }, name) => {
+      return cmdHandlers.handleQuery(session, name, {
+        force: options.force === true,
+        details: true
+      })
+    })
+
+  // 查询完整信息
+  ddr.subcommand('.full', '查询 DDRace 玩家完整统计信息')
+    .option('force', '-f 强制刷新缓存')
+    .usage('示例: ddr.full <玩家名称>')
+    .action(async ({ session, options }, name) => {
+      return cmdHandlers.handleQuery(session, name, {
+        force: options.force === true,
+        details: true,
+        full: true
+      })
+    })
+
+  // ID查询 (不区分ID和名称)
+  ddr.subcommand('.id', '通过ID或昵称查询 DDRace 玩家')
+    .option('force', '-f 强制刷新缓存')
+    .option('details', '-d 显示详细信息')
+    .usage('示例: ddr.id <玩家ID或昵称>')
+    .action(async ({ session, options }, input) => {
+      if (!input) return '请提供玩家ID或昵称'
+      return cmdHandlers.handleQuery(session, input.trim(), {
+        force: options.force === true,
+        details: options.details === true
+      })
+    })
+
+  // 搜索和绑定
+  ddr.subcommand('.search', '搜索并绑定DDRace玩家')
+    .usage('示例: ddr.search <部分玩家名称或ID>')
+    .action(async ({ session }, term) => {
+      return cmdHandlers.handleSearch(session, term)
+    })
+
+  // 国家排名查询
+  ddr.subcommand('.country', '查看玩家在国内的排名')
+    .usage('示例: ddr.country <玩家名称>')
+    .action(async ({ session }, name) => {
+      return cmdHandlers.handleCountryRank(session, name)
     })
 
   // 解绑玩家名称
-  ddr.subcommand('.unbind', '解除绑定的 DDRace 玩家名称')
+  ddr.subcommand('.unbind', '解除绑定的玩家名称')
     .action(async ({ session }) => {
       const userId = session?.userId
       const channelId = session?.channelId
@@ -217,165 +334,5 @@ export function registerPlayerCommands(
       )
 
       return unbound ? '解绑成功' : '你尚未绑定任何玩家名称'
-    })
-
-  // 添加新的子命令 - 玩家详细统计
-  ddr.subcommand('.stats', '查询 DDRace 玩家详细统计')
-    .option('force', '-f 强制刷新缓存')
-    .usage('示例: ddr.stats <玩家名称>')
-    .action(async ({ session, options }, name) => {
-      // 使用相同的处理函数，但添加详细选项
-      const queryOptions: QueryOptions = {
-        force: options.force === true,
-        details: true
-      }
-      return await handlePlayerQuery(session, name, queryOptions)
-    })
-
-  // 添加简写命令
-  ddr.subcommand('.r', '查询 DDRace 玩家分数 (简写)')
-    .option('force', '-f 强制刷新缓存')
-    .usage('示例: ddr.r <玩家名称>')
-    .action(async ({ session, options }, name) => {
-      const queryOptions: QueryOptions = {
-        force: options.force === true
-      }
-      return await handlePlayerQuery(session, name, queryOptions)
-    })
-
-  ddr.subcommand('.s', '查询 DDRace 玩家详细统计 (简写)')
-    .option('force', '-f 强制刷新缓存')
-    .usage('示例: ddr.s <玩家名称>')
-    .action(async ({ session, options }, name) => {
-      const queryOptions: QueryOptions = {
-        force: options.force === true,
-        details: true
-      }
-      return await handlePlayerQuery(session, name, queryOptions)
-    })
-
-  // 添加新的子命令 - 查询玩家的完整信息
-  ddr.subcommand('.full', '查询 DDRace 玩家的完整统计信息')
-    .option('force', '-f 强制刷新缓存')
-    .usage('示例: ddr.full <玩家名称>')
-    .action(async ({ session, options }, name) => {
-      // 使用相同的处理函数，但添加更多数据选项
-      const queryOptions: QueryOptions = {
-        force: options.force === true,
-        details: true,
-        full: true  // 添加full选项以获取完整数据
-      }
-      return await handlePlayerQuery(session, name, queryOptions)
-    })
-
-  // 添加查看国家排名的命令
-  ddr.subcommand('.country', '查看玩家在国内的排名')
-    .usage('示例: ddr.country <玩家名称>')
-    .action(async ({ session }, name) => {
-      // 如果没提供名字，尝试使用绑定的名字
-      if (!name) {
-        const userId = session?.userId
-        const channelId = session?.channelId
-
-        if (!userId || !channelId) return '无法获取用户信息，请提供玩家名称'
-
-        const playerName = await bindingService.getName(
-          userId,
-          channelId,
-          session.subtype === 'group'
-        )
-
-        if (!playerName) {
-          return '你还没有绑定玩家名称，请使用 ddr <玩家名称> 进行绑定'
-        }
-
-        name = playerName
-      } else {
-        name = api.formatPlayerName(name)
-        if (!name) return '请提供有效的玩家名称'
-      }
-
-      try {
-        const countryRank = await ddnetApi.fetchPlayerCountryRank(name)
-        if (!countryRank) {
-          return `未能获取到玩家 ${name} 的国家排名信息`
-        }
-
-        return `${name} 在 ${countryRank.country_name}(${countryRank.country_code}) 的排名: 第 ${countryRank.rank} 名 (共 ${countryRank.total_players} 名玩家)`
-      } catch (error) {
-        return `查询失败: ${error.message}`
-      }
-    })
-
-  // 移除 ddr.progress 命令，因为相关的API不存在
-
-  // 修改 ID 查询命令的理解
-  ddr.subcommand('.id', '通过玩家ID/昵称查询 DDRace 玩家数据')
-    .option('force', '-f 强制刷新缓存')
-    .option('details', '-d 显示详细信息')
-    .usage('示例: ddr.id <玩家ID或昵称>')
-    .action(async ({ session, options }, input) => {
-      if (!input) return '请提供玩家ID或昵称'
-
-      input = input.trim()
-
-      // 由于API不区分ID和昵称，所以直接使用input查询
-      await session?.send('正在查询玩家数据，请稍候...')
-
-      const queryOptions: QueryOptions = {
-        force: options.force === true,
-        details: options.details === true
-      }
-
-      // 直接使用handlePlayerQuery查询，不再区分ID和昵称
-      return await handlePlayerQuery(session, input, queryOptions)
-    })
-
-  // 修改 bindid 为更通用的 查找并绑定
-  ddr.subcommand('.search', '查找并绑定DDRace玩家')
-    .usage('示例: ddr.search <部分玩家名称或ID>')
-    .action(async ({ session }, term) => {
-      if (!term) return '请提供要搜索的玩家名称或ID'
-
-      const userId = session?.userId
-      const channelId = session?.channelId
-
-      if (!userId) return '无法获取用户信息'
-
-      try {
-        // 通过term查询玩家
-        await session?.send('正在搜索玩家，请稍候...')
-        const playerData = await ddnetApi.fetchPlayer(term)
-
-        if (!playerData) {
-          return `未找到与 "${term}" 匹配的玩家，请检查输入是否正确`
-        }
-
-        // 获取玩家名称并绑定
-        const playerName = playerData.player
-
-        await bindingService.bind(
-          userId,
-          channelId,
-          playerName,
-          session.subtype === 'group'
-        )
-
-        let responseText = `已成功绑定玩家: ${playerName}`
-
-        // 添加一些基本信息
-        if (playerData.points && playerData.points.rank) {
-          responseText += `\n全球排名: #${playerData.points.rank}`
-        }
-
-        if (playerData.country && playerData.country.name) {
-          responseText += `\n国家: ${playerData.country.name}`
-        }
-
-        return responseText
-      } catch (error) {
-        ctx.logger.error(`搜索并绑定玩家失败:`, error)
-        return `搜索失败：${error.message || '未知错误'}`
-      }
     })
 }

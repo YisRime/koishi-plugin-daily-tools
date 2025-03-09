@@ -1,4 +1,4 @@
-import { Context, h } from 'koishi'
+import { Context } from 'koishi'
 import { createDDNetApi } from '../ddnet-api'
 
 export function registerMapCommands(ctx: Context) {
