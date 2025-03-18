@@ -1,6 +1,5 @@
 import { Context, Schema, h } from 'koishi'
 import {} from 'koishi-plugin-puppeteer'
-import { resolve } from 'path'
 import { readFileSync, existsSync } from 'fs'
 import path from 'path'
 
@@ -54,11 +53,6 @@ const BACKGROUND_IMAGE = path.resolve(ASSETS_DIR, './PCL-Jiazi.jpg')
 
 export function apply(ctx: Context) {
   const browser = ctx.puppeteer?.browser
-
-  if (!browser) {
-    ctx.logger('daily-tools').warn('未找到 puppeteer 插件，头像叠加功能将不可用')
-    return
-  }
 
   if (!existsSync(DEFAULT_AVATAR)) {
     ctx.logger('daily-tools').warn(`默认头像文件不存在: ${DEFAULT_AVATAR}`)
