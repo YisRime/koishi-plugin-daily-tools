@@ -51,15 +51,93 @@ const ASSETS_DIR = path.resolve(__dirname, './assets') // 子目录路径
 const DEFAULT_AVATAR = path.resolve(ASSETS_DIR, './Ltcat.jpg')
 const BACKGROUND_IMAGE = path.resolve(ASSETS_DIR, './PCL-Jiazi.jpg')
 
+/**
+ * 将HTML内容渲染为图片
+ * @param html HTML内容
+ * @param ctx Koishi上下文对象
+ * @param options 渲染选项
+ * @returns 渲染后的图片Buffer
+ * @throws 如果渲染过程出错
+ */
+export async function htmlToImage(html: string, ctx: Context, options: { width?: number; height?: number } = {}): Promise<Buffer> {
+  try {
+    const page = await ctx.puppeteer.page()
+
+    // 设置视口大小
+    const viewportWidth = options.width || 1920
+    const viewportHeight = options.height || 1080
+
+    await page.setViewport({
+      width: viewportWidth,
+      height: viewportHeight,
+      deviceScaleFactor: 2.0
+    })
+
+    // 设置简化的HTML内容
+    await page.setContent(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              margin: 0;
+              padding: 0;
+              overflow: hidden;
+            }
+          </style>
+        </head>
+        <body>
+          ${html}
+        </body>
+      </html>
+    `, { waitUntil: 'networkidle0' })
+
+    // 等待图片加载完成
+    await page.evaluate(() => {
+      return Promise.all(
+        Array.from(document.querySelectorAll('img'))
+          .map(img => {
+            if (img.complete) return Promise.resolve();
+            return new Promise(resolve => {
+              img.addEventListener('load', resolve);
+              img.addEventListener('error', resolve);
+            });
+          })
+      );
+    });
+
+    // 截取整个页面作为图片
+    const imageBuffer = await page.screenshot({
+      type: 'png',
+      fullPage: false
+    })
+
+    await page.close()
+    return imageBuffer
+
+  } catch (error) {
+    ctx.logger.error('图片渲染出错:', error)
+    throw new Error('生成图片时遇到问题，请稍后重试')
+  }
+}
+
 export function apply(ctx: Context) {
-  const browser = ctx.puppeteer?.browser
+  // 检查 puppeteer 是否可用
+  if (!ctx.puppeteer) {
+    ctx.logger('daily-tools').warn('未检测到 puppeteer 服务，图像处理功能将不可用。请安装并配置 koishi-plugin-puppeteer')
+  }
+
+  // 使用可选链避免直接访问 browser 属性
+  const logger = ctx.logger('daily-tools')
 
   if (!existsSync(DEFAULT_AVATAR)) {
-    ctx.logger('daily-tools').warn(`默认头像文件不存在: ${DEFAULT_AVATAR}`)
+    logger.warn(`默认头像文件不存在: ${DEFAULT_AVATAR}`)
   }
 
   if (!existsSync(BACKGROUND_IMAGE)) {
-    ctx.logger('daily-tools').warn(`背景图片文件不存在: ${BACKGROUND_IMAGE}`)
+    logger.warn(`背景图片文件不存在: ${BACKGROUND_IMAGE}`)
   }
 
   /**
@@ -83,6 +161,11 @@ export function apply(ctx: Context) {
 
   ctx.command('make [target:text]', '为头像添加背景效果')
     .action(async ({ session }, target) => {
+      // 检查 puppeteer 是否可用
+      if (!ctx.puppeteer) {
+        return '该功能需要 puppeteer 支持。请确保已安装并配置 koishi-plugin-puppeteer 插件。'
+      }
+
       // 解析用户ID
       let userId = session.userId
 
@@ -98,10 +181,10 @@ export function apply(ctx: Context) {
 
       try {
         const avatar = await getUserAvatar(session, userId)
-        const result = await overlayAvatar(browser, avatar, ctx)
+        const result = await overlayAvatar(avatar, ctx)
         return h.image(result, 'image/png')
       } catch (error) {
-        ctx.logger('daily-tools').error(error)
+        logger.error(error)
         return '处理头像时出错：' + error.message
       }
     })
@@ -129,13 +212,13 @@ async function getUserAvatar(session, userId: string): Promise<string> {
 }
 
 // 使用底图和用户头像生成合成图
-async function overlayAvatar(browser: any, avatarUrl: string, ctx: Context): Promise<Buffer> {
-  const page = await browser.newPage()
+async function overlayAvatar(avatarUrl: string, ctx: Context): Promise<Buffer> {
+  // 确保 puppeteer 可用
+  if (!ctx.puppeteer) {
+    throw new Error('无法访问 Puppeteer 服务，请检查 puppeteer 插件配置')
+  }
 
   try {
-    // 调整视口大小与背景图匹配
-    await page.setViewport({ width: 1920, height: 1080 })
-
     // 准备头像URL
     let avatarImageSrc = avatarUrl;
     if (avatarUrl.startsWith('file://')) {
@@ -154,42 +237,19 @@ async function overlayAvatar(browser: any, avatarUrl: string, ctx: Context): Pro
     // 读取背景图片
     const backgroundImage = `data:image/jpeg;base64,${readFileSync(BACKGROUND_IMAGE).toString('base64')}`
 
+    // 创建自定义的HTML内容用于头像叠加
     const html = `
-    <style>
-      body { margin: 0; padding: 0; width: 1920px; height: 1080px; position: relative; overflow: hidden; }
-      .background { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-      .avatar {
-        position: absolute;
-        top: 100px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 600px;
-        height: 600px;
-        object-fit: cover;
-        z-index: 2;
-      }
-    </style>
-    <img class="background" src="${backgroundImage}" />
-    <img class="avatar" src="${avatarImageSrc}" />`
+    <div style="width: 1920px; height: 1080px; position: relative; margin: 0; padding: 0; overflow: hidden; background: none;">
+      <img style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" src="${backgroundImage}" />
+      <img style="position: absolute; top: 100px; left: 50%; transform: translateX(-50%); width: 600px; height: 600px; object-fit: cover; z-index: 2; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);" src="${avatarImageSrc}" />
+    </div>
+    `
 
-    await page.setContent(html)
+    // 使用通用的HTML渲染函数生成图片
+    return await htmlToImage(html, ctx, {width: 1920, height: 1080})
 
-    // 简化图片加载等待逻辑
-    await page.evaluate(() => {
-      return Promise.all(
-        Array.from(document.querySelectorAll('img'))
-          .map(img => {
-            if (img.complete) return Promise.resolve();
-            return new Promise(resolve => {
-              img.addEventListener('load', resolve);
-              img.addEventListener('error', resolve);
-            });
-          })
-      );
-    });
-
-    return await page.screenshot({ type: 'png' });
-  } finally {
-    await page.close();
+  } catch (error) {
+    ctx.logger('daily-tools').error('头像合成出错:', error)
+    throw new Error('合成头像时遇到问题，请稍后重试')
   }
 }
