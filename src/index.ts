@@ -49,7 +49,33 @@ export const Config: Schema<Config> = Schema.object({
 // 定义插件资源路径
 const ASSETS_DIR = path.resolve(__dirname, './assets') // 子目录路径
 const DEFAULT_AVATAR = path.resolve(ASSETS_DIR, './Ltcat.jpg')
-const BACKGROUND_IMAGE = path.resolve(ASSETS_DIR, './PCL-Jiazi.jpg')
+
+// 图片处理相关常量
+const IMAGE_CONFIG = {
+  // 默认图片尺寸配置
+  sizes: {
+    standard: { width: 1280, height: 720 }, // 标准16:9
+    square: { width: 800, height: 800 }, // 正方形
+    small: { width: 640, height: 360 } // 小尺寸16:9
+  },
+  // 不同风格的背景图及配置
+  styles: {
+    jiazi: {
+      background: path.resolve(ASSETS_DIR, './PCL-Jiazi.jpg'),
+      avatarSize: 400,
+      avatarTop: 60,
+      borderRadius: 8
+    },
+    // 调整tntboom风格
+    tntboom: {
+      background: path.resolve(ASSETS_DIR, './HMCL-Boom.jpg'),
+      avatarSize: 320,
+      avatarTop: 20,
+      avatarOffsetX: 50,
+      borderRadius: 8
+    }
+  }
+};
 
 /**
  * 将HTML内容渲染为图片
@@ -64,8 +90,8 @@ export async function htmlToImage(html: string, ctx: Context, options: { width?:
     const page = await ctx.puppeteer.page()
 
     // 设置视口大小
-    const viewportWidth = options.width || 1920
-    const viewportHeight = options.height || 1080
+    const viewportWidth = options.width
+    const viewportHeight = options.height
 
     await page.setViewport({
       width: viewportWidth,
@@ -123,71 +149,132 @@ export async function htmlToImage(html: string, ctx: Context, options: { width?:
   }
 }
 
-export function apply(ctx: Context) {
-  // 检查 puppeteer 是否可用
-  if (!ctx.puppeteer) {
-    ctx.logger('daily-tools').warn('未检测到 puppeteer 服务，图像处理功能将不可用。请安装并配置 koishi-plugin-puppeteer')
+/**
+ * 将图片资源转为base64数据URL
+ * @param imagePath 图片路径或URL
+ * @returns base64格式的数据URL
+ */
+function imageToDataUrl(imagePath: string): string {
+  try {
+    if (imagePath.startsWith('file://')) {
+      const filePath = imagePath.replace('file://', '');
+      if (existsSync(filePath)) {
+        const imageBuffer = readFileSync(filePath);
+        return `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+      }
+    }
+    // 如果是远程URL，直接返回
+    return imagePath;
+  } catch (e) {
+    // 返回一个1x1像素的透明图片作为备用
+    return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
   }
+}
 
-  // 使用可选链避免直接访问 browser 属性
-  const logger = ctx.logger('daily-tools')
+/**
+ * 生成头像效果合成图
+ * @param avatarUrl 头像URL或路径
+ * @param style 样式名称
+ * @param ctx Koishi上下文
+ * @param isRound 是否使用圆形头像
+ * @returns 合成后的图片Buffer
+ */
+async function generateAvatarEffect(avatarUrl: string, style: string, ctx: Context, isRound: boolean = false): Promise<Buffer> {
+  // 获取样式配置
+  const styleConfig = IMAGE_CONFIG.styles[style] || IMAGE_CONFIG.styles.jiazi;
+  const sizeConfig = IMAGE_CONFIG.sizes.standard;
+
+  // 准备图片资源
+  const avatarImageSrc = imageToDataUrl(avatarUrl);
+  const backgroundImage = imageToDataUrl(`file://${styleConfig.background}`);
+
+  // 处理水平位置，如果有偏移则应用偏移值，否则居中
+  const horizontalPosition = styleConfig.avatarOffsetX
+    ? `left: calc(50% + ${styleConfig.avatarOffsetX}px); transform: translateX(-50%);`
+    : `left: 50%; transform: translateX(-50%);`;
+
+  // 确定头像边框半径 - 圆形或默认圆角
+  const borderRadius = isRound ? '50%' : `${styleConfig.borderRadius}px`;
+
+  // 创建HTML布局
+  const html = `
+    <div style="width: ${sizeConfig.width}px; height: ${sizeConfig.height}px; position: relative; margin: 0; padding: 0; overflow: hidden; background: none;">
+      <img style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" src="${backgroundImage}" />
+      <img style="position: absolute; top: ${styleConfig.avatarTop}px; ${horizontalPosition} width: ${styleConfig.avatarSize}px; height: ${styleConfig.avatarSize}px; object-fit: cover; z-index: 2; border-radius: ${borderRadius}; box-shadow: 0 5px 15px rgba(0,0,0,0.3);" src="${avatarImageSrc}" />
+    </div>
+  `;
+
+  // 渲染图片
+  return await htmlToImage(html, ctx, sizeConfig);
+}
+
+export function apply(ctx: Context) {
+  // 检查资源文件
+  const logger = ctx.logger('daily-tools');
+  Object.values(IMAGE_CONFIG.styles).forEach(style => {
+    if (!existsSync(style.background)) {
+      logger.warn(`样式背景图片不存在: ${style.background}`);
+    }
+  });
 
   if (!existsSync(DEFAULT_AVATAR)) {
-    logger.warn(`默认头像文件不存在: ${DEFAULT_AVATAR}`)
-  }
-
-  if (!existsSync(BACKGROUND_IMAGE)) {
-    logger.warn(`背景图片文件不存在: ${BACKGROUND_IMAGE}`)
+    logger.warn(`默认头像文件不存在: ${DEFAULT_AVATAR}`);
   }
 
   /**
    * 解析目标用户ID (支持@元素、@数字格式或纯数字)
-   * @param target - 要解析的目标字符串，可以是纯数字、`@`元素或`@`数字格式
-   * @returns 解析出的用户ID，如果解析失败则返回null
    */
   function parseTarget(target: string): string | null {
-    if (!target) return null
-    // 尝试解析at元素
+    if (!target) return null;
     try {
-      const atElement = h.select(h.parse(target), 'at')[0]
+      const atElement = h.select(h.parse(target), 'at')[0];
       if (atElement?.attrs?.id) return atElement.attrs.id;
     } catch {}
-    // 尝试匹配@数字格式或纯数字
-    const atMatch = target.match(/@(\d+)/)
+
+    const atMatch = target.match(/@(\d+)/);
     const userId = atMatch ? atMatch[1] : (/^\d+$/.test(target.trim()) ? target.trim() : null);
-    // 验证ID格式：5-10位数字
     return userId && /^\d{5,10}$/.test(userId) ? userId : null;
   }
 
-  ctx.command('make [target:text]', '为头像添加背景效果')
-    .action(async ({ session }, target) => {
-      // 检查 puppeteer 是否可用
-      if (!ctx.puppeteer) {
-        return '该功能需要 puppeteer 支持。请确保已安装并配置 koishi-plugin-puppeteer 插件。'
-      }
+  // 创建主命令
+  const make = ctx.command('make', '制作图片表情包');
 
-      // 解析用户ID
-      let userId = session.userId
+  // 通用的头像处理函数
+  async function handleAvatarCommand(session, target, style, options: { round?: boolean } = {}) {
+    // 解析用户ID
+    let userId = session.userId;
+    if (target) {
+      const parsedId = parseTarget(target);
+      if (parsedId) userId = parsedId;
+    }
 
-      // 如果提供了目标，尝试解析
-      if (target) {
-        const parsedId = parseTarget(target)
-        if (parsedId) {
-          userId = parsedId
-        }
-      }
+    if (!userId) return '请指定一个有效的用户';
 
-      if (!userId) return '请指定一个有效的用户'
+    try {
+      const avatar = await getUserAvatar(session, userId);
+      // 只使用选项中的round值
+      const isRound = !!options.round;
+      const result = await generateAvatarEffect(avatar, style, ctx, isRound);
+      return h.image(result, 'image/png');
+    } catch (error) {
+      logger.error(error);
+      return '处理头像时出错：' + error.message;
+    }
+  }
 
-      try {
-        const avatar = await getUserAvatar(session, userId)
-        const result = await overlayAvatar(avatar, ctx)
-        return h.image(result, 'image/png')
-      } catch (error) {
-        logger.error(error)
-        return '处理头像时出错：' + error.message
-      }
-    })
+  // 创建子命令 jiazi
+  make.subcommand('.jiazi [target:text]', '生成"你要被夹"表情包')
+    .option('round', '-r 使用圆形头像')
+    .action(async ({ session, options }, target) => {
+      return handleAvatarCommand(session, target, 'jiazi', options);
+    });
+
+  // 创建子命令 tntboom
+  make.subcommand('.tntboom [target:text]', '生成"你要被炸"表情包')
+    .option('round', '-r 使用圆形头像')
+    .action(async ({ session, options }, target) => {
+      return handleAvatarCommand(session, target, 'tntboom', options);
+    });
 }
 
 /**
@@ -207,49 +294,5 @@ async function getUserAvatar(session, userId: string): Promise<string> {
     } catch (e) { /* 忽略错误继续 */ }
   }
 
-  // 直接返回默认头像文件路径
   return `file://${DEFAULT_AVATAR}`;
-}
-
-// 使用底图和用户头像生成合成图
-async function overlayAvatar(avatarUrl: string, ctx: Context): Promise<Buffer> {
-  // 确保 puppeteer 可用
-  if (!ctx.puppeteer) {
-    throw new Error('无法访问 Puppeteer 服务，请检查 puppeteer 插件配置')
-  }
-
-  try {
-    // 准备头像URL
-    let avatarImageSrc = avatarUrl;
-    if (avatarUrl.startsWith('file://')) {
-      try {
-        // 如果是本地文件路径，尝试将默认头像转换为base64
-        const filePath = avatarUrl.replace('file://', '');
-        const imageBuffer = readFileSync(filePath);
-        avatarImageSrc = `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
-      } catch (e) {
-        ctx.logger('daily-tools').error('无法读取默认头像:', e);
-        // 使用备用头像方案 (可以是一个简单的彩色方块)
-        avatarImageSrc = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-      }
-    }
-
-    // 读取背景图片
-    const backgroundImage = `data:image/jpeg;base64,${readFileSync(BACKGROUND_IMAGE).toString('base64')}`
-
-    // 创建自定义的HTML内容用于头像叠加
-    const html = `
-    <div style="width: 1920px; height: 1080px; position: relative; margin: 0; padding: 0; overflow: hidden; background: none;">
-      <img style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;" src="${backgroundImage}" />
-      <img style="position: absolute; top: 100px; left: 50%; transform: translateX(-50%); width: 600px; height: 600px; object-fit: cover; z-index: 2; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3);" src="${avatarImageSrc}" />
-    </div>
-    `
-
-    // 使用通用的HTML渲染函数生成图片
-    return await htmlToImage(html, ctx, {width: 1920, height: 1080})
-
-  } catch (error) {
-    ctx.logger('daily-tools').error('头像合成出错:', error)
-    throw new Error('合成头像时遇到问题，请稍后重试')
-  }
 }
